@@ -25,8 +25,36 @@ The CLI is pinned as a development dependency. Local link details and database c
 - Ownership references `auth.users`. Authenticated clients can create/read/update/delete only their own rows. Anonymous database access is revoked; timestamps are maintained by triggers.
 - The ownership test exercises two transaction-local users and database roles, checks cross-user isolation and owner CRUD, then rolls back everything. It does not test an end-to-end Auth signup/login flow.
 
-Postgres and Auth are core (#12). S3-compatible object storage is a separate feature (#13); no buckets are created, and the local Storage services are disabled. Local `config.toml` settings have not been pushed to the hosted Auth service. Configure the final Vercel Site URL and redirect URLs when wiring frontend authentication.
+Postgres and Auth are core (#12). S3-compatible object storage is a separate feature (#13); no buckets are created, and the local Storage services are disabled. The full local `config.toml` has not been pushed to the hosted Auth service. Only the Site URL and local redirect allowlist from `hosted-auth/supabase/config.toml` have been applied.
 
-The app currently continues to use its existing IndexedDB library. The frontend Auth/session UI and cloud save/load adapters remain to be implemented under #12. Database tables alone do not enable cloud persistence. Binary CAD/geometry and GIF previews belong to #13 rather than these metadata tables.
+The app currently continues to use its existing IndexedDB library. GitHub Auth/session controls are implemented; cloud save/load adapters remain to be implemented under #12. Database tables and sign-in alone do not enable cloud persistence. Binary CAD/geometry and GIF previews belong to #13 rather than these metadata tables.
 
 Free-plan quotas include 500 MB database size, 1 GB object storage, and 5 GB egress; inactive free projects may be paused after a week. Keep binary geometry out of metadata JSON. Creating this project did not request a paid plan, paid compute size, or add-on.
+
+## GitHub login
+
+1. Register an [OAuth app in GitHub](https://github.com/settings/applications/new), named **Astra Industries**. Homepage: your Astra app URL (`http://127.0.0.1:8787` for local development). Authorization callback URL must be exactly:
+
+   `https://mrhxfmtofvrgfaikllfw.supabase.co/auth/v1/callback`
+
+2. Generate a client secret in GitHub. In [Supabase Auth providers](https://supabase.com/dashboard/project/mrhxfmtofvrgfaikllfw/auth/providers), enable GitHub and save its Client ID and Client Secret. Store the secret only in the provider settings, not in Vite variables or source code. This step requires the GitHub OAuth app owner and is not performed by the CLI setup.
+3. Add these public values to a root `.env.local` (ignored) and your Vercel project's environment:
+
+   ```dotenv
+   VITE_SUPABASE_URL=https://mrhxfmtofvrgfaikllfw.supabase.co
+   VITE_SUPABASE_PUBLISHABLE_KEY=your_publishable_key_from_supabase
+   ```
+
+4. Under Supabase Authentication → URL Configuration, the production Site URL is `https://astra-industries.vercel.app`, and its exact origin plus local ports 8787 and 5173 have been configured as redirects. Never use a production frontend URL as GitHub's callback; GitHub calls Supabase first, and Supabase returns to Astra.
+5. Rebuild/redeploy so Vite picks up the variables. Click **Sign in with GitHub**, authorize, and return to Astra. The account name and **Sign out** button indicate the restored session. Login requests `read:user user:email`, not repository access.
+
+Authentication uses PKCE, persists/refreshed sessions through the Supabase client, and signs out of the current browser session. OAuth errors are shown in the UI; a disabled provider is detected before navigating away. Imported assets/room settings are temporarily saved to IndexedDB for the redirect and restored once on return in the same tab (up to one hour). This temporary snapshot is not cloud scene persistence.
+
+To update just hosted Auth redirect settings, edit `hosted-auth/supabase/config.toml`, review the diff, then apply:
+
+```sh
+npx supabase config diff --workdir supabase/hosted-auth --project-ref mrhxfmtofvrgfaikllfw
+npx supabase config push --workdir supabase/hosted-auth --project-ref mrhxfmtofvrgfaikllfw
+```
+
+`npm run test:auth` exercises the real Supabase client with mocked provider/token responses: PKCE, login errors, session persistence, logout, workspace restoration, and mobile layout. It does not prove the external GitHub credentials or live authorization work. A real authorization round trip is still required after enabling the provider.

@@ -8,6 +8,8 @@ import type { Asset, Vec3 } from './lib/scene';
 import { createWorld } from './lib/world';
 import { regionBounds, type FloorRegion } from './lib/gif';
 import { CaptureTools } from './components/capture-tools';
+import { AuthControls } from './components/auth-controls';
+import { preserveAuthWorkspace, restoreAuthWorkspace } from './lib/auth-workspace';
 import './style.css';
 
 const importer = new ImportService();
@@ -64,6 +66,17 @@ function App() {
   const [status, setStatus] = useState('Ready to import');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    let active = true;
+    void restoreAuthWorkspace().then(snapshot => {
+      if (snapshot && active) {
+        setAssets(snapshot.assets); setRoom(snapshot.room); setSelected(snapshot.selected);
+        setPositions(snapshot.positions ?? snapshot.assets.map((_, index) => [index * 1.25, 0, 0] as Vec3));
+        setStatus('Restored workspace after sign-in');
+      }
+    }).catch(e => { if (active) setError((e as Error).message); });
+    return () => { active = false; };
+  }, []);
   const [prompt, setPrompt] = useState('A small 5V laboratory temperature monitor with a display');
   const [mode, setMode] = useState('simulation');
   const [model, setModel] = useState('');
@@ -158,11 +171,11 @@ function App() {
         <button className="import" disabled={busy} onClick={openFilePicker}>↑ Drop files or browse<br /><small>FORMA JSON · STEP · STP</small></button>
         <details><summary>STEP import settings</summary><label>Source up axis<select value={upAxis} onChange={e => setUpAxis(e.target.value as 'Y' | 'Z')}><option>Z</option><option>Y</option></select></label><label>Scale correction<input type="number" min="0.000001" value={scale} onChange={e => setScale(Number(e.target.value))} /></label><p>STEP units are read automatically. Correction multiplies the physical size.</p></details>
         <section><div className="eyebrow">ROOM / METERS</div><div className="dimensions">{['Width', 'Depth', 'Height'].map((name, i) => <label key={name}>{name}<input aria-label={name} type="number" min="1" max="100" step=".5" value={room[i]} onChange={e => { const n = Number(e.target.value); if (n >= 1 && n <= 100) setRoom(old => old.map((v, j) => i === j ? n : v)); }} /></label>)}</div><button onClick={() => setSelected(-1)}>View entire room</button></section>
-         <section><div className="eyebrow">SCENE COLLECTION <span>{assets.length}</span></div>{!assets.length && <p>Your room is a blank canvas.</p>}{assets.map((a, i) => <button className={`asset ${i === selected ? 'active' : ''}`} key={`${a.id}-${i}`} onClick={() => setSelected(i)}><span>◇ {a.name}</span><small>{a.source.kind.toUpperCase()} · {a.parts.length} parts</small></button>)}</section>
+        <section><div className="eyebrow">SCENE COLLECTION <span>{assets.length}</span></div>{!assets.length && <p>Your room is a blank canvas.</p>}{assets.map((a, i) => <button className={`asset ${i === selected ? 'active' : ''}`} key={`${a.id}-${i}`} onClick={() => setSelected(i)}><span>◇ {a.name}</span><small>{a.source.kind.toUpperCase()} · {a.parts.length} parts</small></button>)}</section>
+        {import.meta.env.VITE_FORMA_GENERATION_ENABLED !== 'false' && <details><summary>Build with Forma</summary><textarea aria-label="Project description" value={prompt} onChange={e => setPrompt(e.target.value)} /><label>Generation mode<select value={mode} onChange={e => setMode(e.target.value)}><option value="simulation">Deterministic demo</option><option value="live">Live generation</option></select></label>{mode === 'live' && <><label>Provider<input value={provider} onChange={e => setProvider(e.target.value)} /></label><label>Model<input value={model} onChange={e => setModel(e.target.value)} /></label><p>Set provider credentials in the server’s .env file.</p></>}<button disabled={busy} onClick={() => void generate()}>Build and import →</button></details>}
          {assets.length > 0 && <section><div className="eyebrow">LAYOUT / METERS</div><p>Place each set piece using its floor position. Y raises an asset above the floor.</p>{assets.map((a, i) => <fieldset className="placement" key={`placement-${a.id}-${i}`}><legend>{a.name}</legend><div className="dimensions">{(['X', 'Y', 'Z'] as const).map((axis, axisIndex) => <label key={axis}>{axis}<input aria-label={`${a.name} ${axis} position`} type="number" step=".1" value={positions[i]?.[axisIndex] ?? 0} onChange={e => { const value = Number(e.target.value); if (!Number.isFinite(value)) return; setPositions(old => old.map((position, positionIndex) => positionIndex === i ? position.map((coordinate, coordinateIndex) => coordinateIndex === axisIndex ? value : coordinate) as Vec3 : position)); }} /></label>)}</div><button type="button" onClick={() => setPositions(old => old.map((position, positionIndex) => positionIndex === i ? [i * (a.dimensions[0] + .25), 0, 0] : position))}>Reset position</button></fieldset>)}</section>}
-        <details><summary>Build with Forma</summary><textarea aria-label="Project description" value={prompt} onChange={e => setPrompt(e.target.value)} /><label>Generation mode<select value={mode} onChange={e => setMode(e.target.value)}><option value="simulation">Deterministic demo</option><option value="live">Live generation</option></select></label>{mode === 'live' && <><label>Provider<input value={provider} onChange={e => setProvider(e.target.value)} /></label><label>Model<input value={model} onChange={e => setModel(e.target.value)} /></label><p>Set provider credentials in the server’s .env file.</p></>}<button disabled={busy} onClick={() => void generate()}>Build and import →</button></details>
       </aside>;
-  return <><header><div className="brand"><span className="logo">A</span> ASTRA <span className="muted">INDUSTRIES</span></div><span className="tag">SPATIAL WORKBENCH / 001</span><button disabled={busy} onClick={openFilePicker}>+ Import project</button></header>
+  return <><header className="app-header"><div className="brand"><span className="logo">A</span> ASTRA <span className="muted">INDUSTRIES</span></div><span className="tag">SPATIAL WORKBENCH / 001</span><AuthControls beforeSignIn={() => preserveAuthWorkspace(assets, room, selected, positions)} /><button disabled={busy} onClick={openFilePicker}>+ Import project</button></header>
     <main onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); void load(Array.from(e.dataTransfer.files)); }}>
       {isFullscreen && stage.current ? createPortal(workspace, stage.current) : workspace}
       <div ref={stage} className={`stage${expanded ? ' stage-expanded' : ''}`}>
