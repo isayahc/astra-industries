@@ -64,4 +64,8 @@ export class SceneRepository {
     return{scene:data,workspace};
   }
   async remove(scene:SavedScene){const{error}=await this.client.rpc('delete_workspace_scene',{p_id:scene.id,p_expected_revision:scene.revision});if(error)throw new Error(error.message);}
+  async duplicate(scene:SavedScene,name:string):Promise<SavedScene>{
+    const {data,error}=await this.client.rpc('duplicate_workspace_scene',{p_source_id:scene.id,p_new_id:crypto.randomUUID(),p_name:name.trim()});
+    if(error)throw new Error(error.message);return(Array.isArray(data)?data[0]:data) as SavedScene;
+  }
 }

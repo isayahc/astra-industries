@@ -56,7 +56,7 @@ try {
   await page.locator('input[aria-label="Import files"]').setInputFiles({ name: 'cloud-test.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(fixture)) });
   await page.getByRole('button', { name: 'Save selected asset to library' }).click();
   await page.getByLabel('GIF resolution').selectOption('320');
-  await page.getByLabel('Duration').selectOption('2');
+  await page.locator('.capture-panel').getByLabel('Duration').selectOption('2');
   const card = page.getByRole('article', { name: prefix, exact: true });
   await expect(card).toBeVisible();
   await card.getByRole('button', { name: 'Render turntable' }).click();
@@ -111,13 +111,18 @@ try {
   assert.equal((await fetch(signed.data.signedUrl)).ok, false);
   console.log('PASS cross-user/anonymous storage denial, protected lifecycle, immutable files, and expired signed URL.');
 
-  const scene = await a.store.client.from('scenes').insert({ name: prefix }).select('id').single();
-  assert.equal(scene.error, null); scenes.push(scene.data!.id);
-  assert.equal((await a.store.client.from('scene_asset_files').insert({ scene_id: scene.data!.id, version_id: version.id })).error, null);
+  const sceneId = crypto.randomUUID();
+  const assetKey = version.asset?.asset_key ?? version.asset_id;
+  const sceneDocument = { format: 'astra.scene', version: 1, units: 'm', upAxis: 'Y', room: [6, 5, 3],
+    assets: [{ id: assetKey, name: prefix, source: { kind: 'forma', filename: 'cloud-test.json', digest: version.fingerprint }, dimensions: [1, 1, 1], projectRevision: undefined }],
+    instances: [{ id: crypto.randomUUID(), name: prefix, assetId: assetKey, position: [0, 0, 0], rotation: [0, 0, 0], visible: true, cloudVersionId: version.id }],
+    animation: { duration: 3, loop: true, tracks: [] } };
+  const scene = await a.store.client.rpc('save_workspace_scene', { p_id: sceneId, p_name: prefix, p_document: sceneDocument, p_expected_revision: 0, p_write_id: crypto.randomUUID() });
+  assert.equal(scene.error, null); scenes.push(sceneId);
   await assert.rejects(() => a.store.remove(version), /referenced by a saved scene/);
   const deletes = await a.store.client.storage.from(CLOUD_BUCKET).remove([path]);
   assert(!deletes.data?.length); // No DELETE policy while still referenced/ready.
-  assert.equal((await a.store.client.from('scenes').delete().eq('id', scene.data!.id)).error, null);
+  assert.equal((await a.store.client.rpc('delete_workspace_scene', { p_id: sceneId, p_expected_revision: 1 })).error, null);
   assert((await a.store.downloadFile(version, version.files[0].name)).size > 0);
   console.log('PASS saved-scene reference protects shared files; scene deletion retains the asset.');
 
