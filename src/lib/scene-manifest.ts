@@ -1,4 +1,6 @@
 import type { Asset, Vec3 } from './scene';
+import type { SceneManifest } from './workspace';
+import type { SavedScene } from './scene-repository';
 
 export const ASTRA_SCENE_SCHEMA_VERSION = 1 as const;
 
@@ -41,6 +43,8 @@ export type AnimationTimeline = {
 };
 
 export type AstraScene = {
+  workspaceDocument?: SceneManifest;
+  activeCloudScene?: SavedScene | null;
   schemaVersion: typeof ASTRA_SCENE_SCHEMA_VERSION;
   id: string;
   source: SceneSource;

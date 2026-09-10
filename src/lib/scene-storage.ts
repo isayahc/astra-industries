@@ -21,25 +21,25 @@ function openDatabase(): Promise<IDBDatabase> {
   });
 }
 
-export async function saveScene(scene: AstraScene, assets: Asset[]): Promise<void> {
+export async function saveScene(scene: AstraScene, assets: Asset[], scope?: string): Promise<void> {
   const errors = validateScene(scene);
   if (errors.length) throw new Error(`Scene was not saved: ${errors.join(' ')}`);
   const database = await openDatabase();
   await new Promise<void>((resolve, reject) => {
     const transaction = database.transaction(['scenes', 'assets'], 'readwrite');
-    transaction.objectStore('scenes').put({ ...scene, id: ACTIVE_SCENE });
-    for (const asset of assets) transaction.objectStore('assets').put(asset);
+    transaction.objectStore('scenes').put({ ...scene, id: scope ? `${ACTIVE_SCENE}:${scope}` : ACTIVE_SCENE });
+    for (const asset of assets) transaction.objectStore('assets').put(scope ? { id: `${scope}:${asset.id}`, scope, asset } : asset);
     transaction.oncomplete = () => { database.close(); resolve(); };
     transaction.onerror = () => { database.close(); reject(new Error('Could not save the scene. Browser storage may be full or unavailable.')); };
     transaction.onabort = () => { database.close(); reject(new Error('Could not save the scene. Browser storage may be full or unavailable.')); };
   });
 }
 
-export async function loadScene(): Promise<StoredScene | undefined> {
+export async function loadScene(scope?: string): Promise<StoredScene | undefined> {
   const database = await openDatabase();
   return new Promise((resolve, reject) => {
     const transaction = database.transaction(['scenes', 'assets'], 'readonly');
-    const sceneRequest = transaction.objectStore('scenes').get(ACTIVE_SCENE);
+    const sceneRequest = transaction.objectStore('scenes').get(scope ? `${ACTIVE_SCENE}:${scope}` : ACTIVE_SCENE);
     const assetsRequest = transaction.objectStore('assets').getAll();
     transaction.oncomplete = () => {
       database.close();
@@ -47,7 +47,7 @@ export async function loadScene(): Promise<StoredScene | undefined> {
       if (!raw) return resolve(undefined);
       const errors = validateScene(raw);
       if (errors.length) return reject(new Error(`Saved scene is invalid: ${errors.join(' ')}`));
-      const assets = assetsRequest.result as Asset[];
+      const assets = scope ? assetsRequest.result.filter((entry: { scope?: string }) => entry.scope === scope).map((entry: { asset: Asset }) => entry.asset) : assetsRequest.result.filter((entry: { scope?: string }) => !entry.scope) as Asset[];
       const available = new Set(assets.map(asset => asset.id));
       resolve({ scene: raw, assets, missingAssetIds: raw.instances.map(instance => instance.assetId).filter(id => !available.has(id)) });
     };

@@ -3,6 +3,7 @@ import type { Asset } from '../lib/scene';
 import { renderGif, type FloorRegion, type GifOptions, type GifResult } from '../lib/gif';
 import { deleteLibrary, listLibrary, saveLibrary, type LibraryEntry } from '../lib/library';
 import { CloudLibrary } from './cloud-library';
+import type { Workspace } from '../lib/workspace';
 import './capture-tools.css';
 
 function useBlobUrl(blob?: Blob) {
@@ -28,9 +29,10 @@ function LibraryCard({ entry, disabled, render, add, remove }: {
   </article>;
 }
 
-export function CaptureTools({ open, assets, room, selected, close, addAsset, onRegion }: {
+export function CaptureTools({ open, assets, room, selected, close, addAsset, onRegion, workspace, time }: {
   open: boolean; assets: Asset[]; room: number[]; selected: number; close: () => void;
-  addAsset: (asset: Asset) => void; onRegion: (region: FloorRegion | null) => void;
+  addAsset: (asset: Asset, cloudVersionId?: string) => void; onRegion: (region: FloorRegion | null) => void;
+  workspace?: Workspace; time?: number | null;
 }) {
   const [tab, setTab] = useState<'export' | 'library'>('export');
   const [scope, setScope] = useState<GifOptions['scope']>('room');
@@ -38,6 +40,9 @@ export function CaptureTools({ open, assets, room, selected, close, addAsset, on
   const [size, setSize] = useState(480);
   const [duration, setDuration] = useState(3);
   const [fps, setFps] = useState(10);
+  const [rangeStart,setRangeStart]=useState(0);
+  const [rangeEnd,setRangeEnd]=useState(2);
+  useEffect(()=>{setRangeEnd(Math.min(3,workspace?.animation.duration??3));setRangeStart(0);},[workspace?.animation.duration]);
   const [region, setRegion] = useState<FloorRegion>({ x: 0, z: 0, width: 2, depth: 2 });
   const [entries, setEntries] = useState<LibraryEntry[]>([]);
   const [message, setMessage] = useState('');
@@ -87,8 +92,8 @@ export function CaptureTools({ open, assets, room, selected, close, addAsset, on
     try {
       const output = await renderGif(entry ? [entry.asset] : assets, room, {
         scope: entry ? 'asset' : scope, assetIndex: entry ? 0 : selected,
-        motion: preset ?? (scope === 'asset' ? motion : 'turntable'), region, size, duration, fps,
-      }, abort.signal, setProgress);
+        motion: preset ?? motion, region, size, duration, fps, rangeStart, rangeEnd, snapshotTime:time,
+      }, abort.signal, setProgress, entry ? undefined : workspace);
       setResult(output); setMetadataBlob(new Blob([JSON.stringify(output.metadata, null, 2)], { type: 'application/json' }));
       if (entry) {
         const updated: LibraryEntry = { ...entry, preview: output.blob, previewMetadata: output.metadata, updatedAt: Date.now() };
@@ -112,9 +117,11 @@ export function CaptureTools({ open, assets, room, selected, close, addAsset, on
     </div>
     {tab === 'export' ? <>
       <p>Capture geometry for positioning review. Exporting uses a separate camera and leaves your room unchanged.</p>
-      <label>Export scope<select disabled={busy} value={scope} onChange={e => setScope(e.target.value as GifOptions['scope'])}><option value="room">Entire room</option><option value="section">Floor section</option><option value="asset">Selected asset</option></select></label>
+      <label>Export scope<select disabled={busy} value={scope} onChange={e => {setScope(e.target.value as GifOptions['scope']);if(motion==='sample')setMotion('turntable');}}><option value="room">Entire room</option><option value="section">Floor section</option><option value="asset">Selected asset</option></select></label>
+      <label>Preview motion<select disabled={busy} value={motion} onChange={e=>setMotion(e.target.value as GifOptions['motion'])}><option value="turntable">Turntable camera orbit</option>{scope==='asset'&&<option value="sample">Sample lift-and-return</option>}<option value="animation">Authored timeline animation</option></select></label>
+      {motion==='animation'&&<><p>Export up to 4 seconds of the authored timeline with a fixed camera.</p><div className="dimensions"><label>Range start<input aria-label="Animation export start" type="number" min="0" step=".1" value={rangeStart} onChange={e=>setRangeStart(Number(e.target.value))}/></label><label>Range end<input aria-label="Animation export end" type="number" min="0" step=".1" value={rangeEnd} onChange={e=>setRangeEnd(Number(e.target.value))}/></label></div></>}
       {scope === 'section' && <><p>The highlighted box is the export region. Coordinates are in meters from the room center; X is width, Z is depth. Geometry outside the box is clipped.</p><div className="region-fields">{(['x', 'z', 'width', 'depth'] as const).map(key => <label key={key}>{({ x: 'Section center X', z: 'Section center Z', width: 'Section width', depth: 'Section depth' })[key]}<input type="number" step="0.1" disabled={busy} value={Number.isFinite(region[key]) ? region[key] : ''} onChange={e => setRegion(old => ({ ...old, [key]: e.target.value === '' ? NaN : Number(e.target.value) }))} /></label>)}</div></>}
-      {scope === 'asset' && <><p>{assets[selected] ? `Selected: ${assets[selected].name}` : 'Select an asset in the workspace first.'}</p><label>Preview motion<select disabled={busy} value={motion} onChange={e => setMotion(e.target.value as GifOptions['motion'])}><option value="turntable">Turntable camera orbit</option><option value="sample">Sample lift-and-return</option></select></label></>}
+      {scope === 'asset' && <p>{assets[selected] ? `Selected: ${assets[selected].name}` : 'Select an asset in the workspace first.'}</p>}
       {scope === 'asset' && motion === 'sample' && <p className="notice">Synthetic demonstration motion, not a physical simulation or an authored animation track.</p>}
       <button className="capture-primary" disabled={busy || !assets.length || (scope === 'asset' && !assets[selected])} onClick={() => void capture()}>Render GIF</button>
       {!assets.length && <p>Import a Forma project or STEP file to get started.</p>}

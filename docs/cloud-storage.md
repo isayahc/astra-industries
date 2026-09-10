@@ -2,7 +2,7 @@
 
 ## Enable independently
 
-Apply migrations with `npx supabase db push`, then set `VITE_CLOUD_STORAGE_ENABLED=true` and rebuild. The flag defaults to **off**; Postgres/Auth and the IndexedDB library work independently. The hosted database has the private `astra-assets` bucket provisioned, but the production frontend flag is not enabled by this change.
+Apply migrations with `npx supabase db push`, then set `VITE_CLOUD_STORAGE_ENABLED=true` and rebuild. The flag defaults to **off** for new environments; Postgres/Auth and the IndexedDB library work independently. Astra's production flag is now enabled and its private bucket is provisioned.
 
 The existing public `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` are sufficient. Users sign in with GitHub. **No S3 keys or service-role keys belong in the browser.** Supabase Storage is S3-compatible; Astra uses its authenticated Storage API against the same bucket, with the user's JWT and storage policies. A direct S3 signing service is unnecessary for this browser workflow. If a future backend uses the S3 protocol, configure its credentials server-side and re-evaluate its access boundary; privileged S3 access may bypass these user policies.
 
@@ -33,7 +33,7 @@ All transitions go through owner-checking RPCs. Authenticated users cannot direc
 
 `public.scene_asset_files(scene_id, version_id, owner_id)` registers cloud scene references. Composite foreign keys enforce matching owners. Saving a cloud scene under #27 must register its version references in this table, and remove obsolete references when updating the scene. A ready-version check locks against concurrent file deletion. Scene deletion cascades its reference rows, **not the files**. Removing a referenced cloud version is blocked.
 
-The current app has no cloud scene-saving adapter, so it does not create these references yet. Arbitrary IDs embedded only in `scenes.document` are not a substitute for these relation rows. Version IDs should be stored alongside instance identities in the future scene manifest and registered transactionally by that adapter.
+The cloud scene adapter now registers these references transactionally through `save_workspace_scene`, alongside the versioned manifest and optimistic revision update. Arbitrary IDs embedded only in JSON are not a substitute for these relation rows. See `workspace.md` for save/reopen behavior.
 
 ## Limits and recovery
 

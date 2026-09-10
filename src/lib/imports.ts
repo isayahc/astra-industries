@@ -54,13 +54,17 @@ export class ImportService {
       if (candidates.length > 1) throw new Error(`Multiple files match ${normalized}. Select only the intended CAD artifact.`);
       if (candidates.length === 1) {
         const cad = candidates[0];
-        const declaration = doc.artifacts.find(a => String(a.path).replace(/\\/g, '/').replace(/^\.\//, '') === normalizedReference || String(a.path).split('/').pop() === cad.name);
-        if (declaration?.sha256 && declaration.sha256 !== await digestBytes(await cad.arrayBuffer())) {
+        const exactDeclarations = doc.artifacts.filter(a => String(a.path).replace(/\\/g, '/').replace(/^\.\//, '') === normalizedReference);
+        const declarations = exactDeclarations.length ? exactDeclarations : doc.artifacts.filter(a => String(a.path).replace(/\\/g, '/').split('/').pop() === cad.name);
+        if (declarations.length > 1) throw new Error(`Ambiguous artifact declarations for ${cad.name}.`);
+        const declaration = declarations[0];
+        if (declaration?.sha256 && String(declaration.sha256).toLowerCase() !== await digestBytes(await cad.arrayBuffer())) {
           throw new Error(`Integrity check failed for ${cad.name}: bytes do not match the Forma manifest SHA-256.`);
         }
         // Forma mechanical data is always Z-up; standalone STEP options do not change that contract.
         const geometry = await this.step(cad, { upAxis: 'Z', scale: 1 }, progress);
         assets.push({ ...geometry, id: `forma-${digest}-${geometry.source.digest}`, name: doc.name,
+          formaProject: doc.project,
           source: { kind: 'forma', filename: file.name, digest, projectId: doc.projectId, version: doc.version } });
         used.add(cad);
       } else {

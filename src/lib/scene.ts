@@ -13,13 +13,22 @@ export type AssetNode = { id: string; name: string; partIds: string[]; children:
 export type Instance = { id: string; assetId: string; name: string; position: Vec3 };
 export type Room = { width: number; depth: number; height: number; walls: boolean };
 
+export type FormaComponent = { ref_des: string; part_definition_id?: string; name?: string; category?: string; [key: string]: unknown };
+export type FormaIR = {
+  hardware_ir_version?: string; overview?: Record<string, unknown>; components?: FormaComponent[];
+  part_definitions?: Record<string, unknown>[]; bom?: Record<string, unknown>[]; nets?: Record<string, unknown>[];
+  mechanical?: Record<string, unknown>; validation?: Record<string, unknown>; assembly?: unknown[];
+  assembly_metadata?: Record<string, unknown>; [key: string]: unknown;
+};
 export type FormaProject = {
   projectId?: string;
   revision?: string;
   agent?: string;
   hardwareIrVersion: string;
-  ir: Record<string, unknown>;
-  source: 'project_ir' | 'hardware_ir' | 'namespace';
+  ir: FormaIR;
+  source: 'project_ir' | 'hardware_ir' | 'namespace' | 'raw_ir';
+  sourceDocument?: Record<string, unknown>;
+  artifacts?: Record<string, unknown>[];
 };
 
 export type Asset = {

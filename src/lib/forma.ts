@@ -1,5 +1,6 @@
 import { BoxGeometry, Euler, Matrix4 } from 'three';
 import { finalizeAsset, type Asset, type FormaProject, type Part, type Vec3 } from './scene';
+import { scrubCloudData } from './cloud-storage';
 
 type RecordValue = Record<string, unknown>;
 export function record(value: unknown): RecordValue {
@@ -29,14 +30,16 @@ function artifactRecords(value: unknown): RecordValue[] {
 }
 
 export function readFormaDocument(input: unknown, filename: string): FormaDocument {
-  let root = record(input);
+  let root = record(scrubCloudData(structuredClone(input)));
+  const sourceDocument = root;
   if (Object.keys(root).length === 0) throw new Error('Expected a Forma project JSON object.');
   if (root.response) root = record(root.response);
   if (root.format && root.format !== 'forma-project') throw new Error(`Unsupported project format: ${root.format}`);
   if (root.format === 'forma-project' && root.version !== 1) throw new Error(`Unsupported Forma manifest version: ${root.version}. Expected 1.`);
   const object = record(root.project_object ?? (root.object_type ? root : undefined));
   let ir = record(root.project_ir ?? root.hardware_ir ?? root);
-  let source: FormaProject['source'] = root.project_ir ? 'project_ir' : root.hardware_ir ? 'hardware_ir' : 'namespace';
+  let source: FormaProject['source'] = root.project_ir ? 'project_ir' : root.hardware_ir ? 'hardware_ir' : 'raw_ir';
+  let revision: string | undefined;
   let projectId = text(root.project_id);
   let version: string;
   if (Object.keys(object).length && !root.project_ir && !root.hardware_ir) {
@@ -45,13 +48,18 @@ export function readFormaDocument(input: unknown, filename: string): FormaDocume
     if (!Number.isInteger(object.version) || Number(object.version) < 1) throw new Error('Invalid Forma project revision.');
     if (!Array.isArray(object.namespaces)) throw new Error('Forma project namespaces must be an array.');
     const namespaces = object.namespaces.map(record);
+    if (new Set(namespaces.map(n=>n.name)).size !== namespaces.length) throw new Error('Duplicate Forma namespace name.');
     const payload = (name: string) => record(namespaces.find(n => n.name === name)?.payload);
     const meta = payload('project.meta');
     const schema = text(meta.hardware_ir_version, '0.2');
     if (!['0.1', '0.2'].includes(schema)) throw new Error(`Unsupported Hardware IR version: ${schema}. Expected 0.1 or 0.2.`);
-    ir = { ...payload('product.mech'), ...payload('product.overview'), ...payload('product.electrical') };
+    ir = { ...payload('project.meta'), ...payload('project.docs'), ...payload('product.overview'), ...payload('product.architecture'), ...payload('product.electrical'), ...payload('product.mech'), ...payload('product.assembly'), ...payload('product.validation') };
+    const bom = payload('product.bom');
+    if (Array.isArray(bom.line_items) || Array.isArray(bom.bom)) ir.bom = bom.line_items ?? bom.bom;
+    ir.hardware_ir_version = schema;
     source = 'namespace';
     projectId = text(object.object_id);
+    revision = String(object.version);
     version = `${schema} / revision ${object.version}`;
   } else {
     version = text(ir.hardware_ir_version, '0.1');
@@ -59,7 +67,22 @@ export function readFormaDocument(input: unknown, filename: string): FormaDocume
   }
   const metadata = record(ir.assembly_metadata);
   const overview = record(ir.overview);
-  const project: FormaProject = { projectId: projectId || undefined, revision: version, agent: text(root.agent ?? ir.agent) || undefined, hardwareIrVersion: version.split(' / ')[0], ir, source };
+  for (const field of ['overview','mechanical','validation','assembly_metadata']) {
+    if (ir[field] !== undefined && ir[field] !== null && (typeof ir[field] !== 'object' || Array.isArray(ir[field]))) throw new Error(`Forma ${field} must be an object.`);
+  }
+  for (const field of ['components','part_definitions','bom','nets']) {
+    if (ir[field] !== undefined && (!Array.isArray(ir[field]) || (ir[field] as unknown[]).some(v=>!v||typeof v!=='object'||Array.isArray(v)))) throw new Error(`Forma ${field} must be an array of records.`);
+  }
+  const refs = new Set<string>();
+  for (const component of (Array.isArray(ir.components)?ir.components:[]).map(record)) {
+    if (!text(component.ref_des) || refs.has(String(component.ref_des))) throw new Error(`Duplicate or missing Forma component ref_des: ${component.ref_des}`);
+    refs.add(String(component.ref_des));
+  }
+  projectId ||= text(metadata.project_id);
+  const revisionValue = root.revision ?? metadata.revision;
+  revision ||= typeof revisionValue === 'number' || typeof revisionValue === 'string' ? String(revisionValue) : undefined;
+  const artifacts = artifactRecords(root.artifacts ?? ir.artifacts);
+  const project: FormaProject = { projectId: projectId || undefined, revision, agent: text(root.agent ?? ir.agent ?? metadata.source_agent ?? metadata.agent) || undefined, hardwareIrVersion: version.split(' / ')[0], ir, source, sourceDocument, artifacts };
   return {
     name: text(root.title, text(overview.title, filename.replace(/\.json$/i, ''))),
     projectId: projectId || text(metadata.project_id) || undefined,
@@ -67,7 +90,7 @@ export function readFormaDocument(input: unknown, filename: string): FormaDocume
     mechanical: record(ir.mechanical),
     cad: ir.cad_model,
     definitions: Array.isArray(ir.part_definitions) ? ir.part_definitions.map(record) : [],
-    components: Array.isArray(ir.components) ? ir.components.map(record) : [], artifacts: artifactRecords(root.artifacts ?? ir.artifacts), project,
+    components: Array.isArray(ir.components) ? ir.components.map(record) : [], artifacts, project,
   };
 }
 
@@ -96,24 +119,37 @@ export function importForma(input: unknown, filename: string, digest: string): A
   const id = `forma-${digest}`;
   const parts: Part[] = [];
   const warnings: string[] = [];
+  const placements = doc.mechanical.component_placements;
+  if (placements !== undefined && !Array.isArray(placements)) throw new Error('Mechanical component_placements must be an array.');
+  const placementRefs = new Set<string>();
+  for (const value of Array.isArray(placements) ? placements : []) {
+    const ref = text(record(value).ref_des);
+    if (!ref || placementRefs.has(ref)) throw new Error(`Duplicate or missing mechanical ref_des: ${ref}`);
+    if (doc.components.length && !doc.components.some(c=>c.ref_des===ref)) throw new Error(`Unknown component ref_des in mechanical placement: ${ref}`);
+    placementRefs.add(ref);
+  }
+  const represented = new Set<string>();
   const meshes = meshRecords(doc.cad);
   if (meshes?.length) {
     for (const [index, value] of meshes.entries()) {
       const mesh = record(value);
+      const ref = text(mesh.ref_des, doc.components.some(c=>c.ref_des===mesh.name) ? String(mesh.name) : '');
+      if (ref) represented.add(ref);
       if (!Array.isArray(mesh.vertices) || !Array.isArray(mesh.faces)) throw new Error('CAD meshes require vertices and faces arrays.');
       const source = mesh.vertices.map(v => finite(v, 'CAD vertex'));
       const vertices: number[] = [];
       for (let i = 0; i < source.length; i += 3) vertices.push(source[i] / 1000, source[i + 2] / 1000, -source[i + 1] / 1000);
       parts.push({ id: `${id}/mesh/${index}`, name: text(mesh.name, `CAD part ${index + 1}`), vertices,
-        indices: mesh.faces.map(v => finite(v, 'CAD face')), metadata: { representation: 'CAD mesh', sourceId: text(mesh.shapeId ?? mesh.shape_id ?? mesh.id) } });
+        indices: mesh.faces.map(v => finite(v, 'CAD face')), metadata: { representation: 'CAD mesh', ref, sourceId: text(mesh.shapeId ?? mesh.shape_id ?? mesh.id) } });
     }
-  } else {
-    const placements = doc.mechanical.component_placements;
+  }
+  if (!meshes?.length || (represented.size > 0 && Array.isArray(placements) && placements.some(p=>!represented.has(String(record(p).ref_des))))) {
     if (placements !== undefined && !Array.isArray(placements)) throw new Error('Mechanical component_placements must be an array.');
     if (Array.isArray(placements) && placements.length) {
       for (const value of placements) {
         const item = record(value);
         const ref = text(item.ref_des);
+        if (represented.has(ref)) continue;
         if (!ref) throw new Error('Each mechanical placement needs a ref_des.');
         const component = doc.components.find(c => c.ref_des === ref) ?? {};
         const definition = doc.definitions.find(d => d.part_definition_id === component.part_definition_id) ?? component;
