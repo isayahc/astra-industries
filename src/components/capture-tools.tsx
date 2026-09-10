@@ -29,10 +29,10 @@ function LibraryCard({ entry, disabled, render, add, remove }: {
   </article>;
 }
 
-export function CaptureTools({ open, assets, room, selected, close, addAsset, onRegion, workspace, time, onFeedback }: {
+export function CaptureTools({ open, assets, room, selected, close, addAsset, onRegion, workspace, time, roomOperation, onFeedback }: {
   open: boolean; assets: Asset[]; room: number[]; selected: number; close: () => void;
   addAsset: (asset: Asset, cloudVersionId?: string) => void; onRegion: (region: FloorRegion | null) => void;
-  workspace?: Workspace; time?: number | null; onFeedback?: (review: GifResult['metadata'], instruction: string) => Promise<void>;
+  workspace?: Workspace; time?: number | null; roomOperation?: number; onFeedback?: (review: GifResult['metadata'], instruction: string) => Promise<void>;
 }) {
   const [tab, setTab] = useState<'export' | 'library'>('export');
   const [scope, setScope] = useState<GifOptions['scope']>('room');
@@ -139,7 +139,7 @@ export function CaptureTools({ open, assets, room, selected, close, addAsset, on
       <p>{assets[selected] ? `Selected: ${assets[selected].name}` : 'Select a room asset to save it.'}</p>
       {!entries.length && <p>Your library is empty. Import an object, select it, and save it here.</p>}
       {entries.map(entry => <LibraryCard key={entry.id} entry={entry} disabled={busy} render={preset => void capture(entry, preset)} add={() => { addAsset(entry.asset); setMessage(`Added ${entry.asset.name} to the room.`); }} remove={() => void remove(entry)} />)}
-      <CloudLibrary entries={entries} addAsset={addAsset} />
+      <CloudLibrary entries={entries} addAsset={addAsset} roomOperation={roomOperation} />
     </>}
     {busy && controller.current && <div className="capture-progress"><progress aria-label="GIF export progress" value={progress} max={1} /><button onClick={() => controller.current?.abort()}>Cancel export</button></div>}
     <p role="status" aria-label="GIF export status">{message}</p>

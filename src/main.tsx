@@ -41,11 +41,12 @@ function App(){
   const [captureOpen,setCaptureOpen]=useState(false);const[captureRegion,setCaptureRegion]=useState<FloorRegion|null>(null);
   const isFullscreen=fullscreen||expanded;const restoreAfterPicker=useRef(false);
   const owner=useUserId();const previousOwner=useRef<string|null>(null);
+  const roomOperation=useRef(0);
   const[draftReady,setDraftReady]=useState(false);const draftOwner=useRef<string|null>(null);const draftEpoch=useRef(0);const[localSaved,setLocalSaved]=useState(false);
   const [adoptionPending,setAdoptionPending]=useState(false);
   const [draftRecovery,setDraftRecovery]=useState<{scope:string;message:string}|null>(null);
   function change(next:Workspace){setHistory(old=>({past:[...old.past,old.present].slice(-50),present:next,future:[]}));}
-  function replace(next:Workspace){setPlaying(false);setTime(null);setSelected(-1);setSelectedPart(-1);setHistory({past:[],present:next,future:[]});setFocus(n=>n+1);}
+  function replace(next:Workspace){roomOperation.current++;setPlaying(false);setTime(null);setSelected(-1);setSelectedPart(-1);setHistory({past:[],present:next,future:[]});setFocus(n=>n+1);}
   useEffect(()=>{
     if(previousOwner.current&&previousOwner.current!==owner){draftEpoch.current++;draftOwner.current=owner;setAdoptionPending(false);replace(emptyWorkspace());setCurrentScene(null);setCaptureOpen(false);setStatus('Account changed; cloud workspace cleared.');}
     if(!previousOwner.current&&owner&&draftOwner.current!==owner&&workspace.items.length){setAdoptionPending(true);setBusy(true);setStatus('Choose what to do with this anonymous draft.');}
@@ -105,6 +106,7 @@ function App(){
   }
   async function load(files:File[]){
     if(busy||!files.length)return;setBusy(true);setError('');
+    const operation=roomOperation.current;
     try{
       if(files.length===1&&files[0].name.toLowerCase().endsWith('.json')){
         if(files[0].size>75*1024*1024)throw new Error('Scene file exceeds 75 MiB.');
@@ -112,6 +114,7 @@ function App(){
         if(json?.format==='astra.scene'){replace(hydrateManifest(readManifest(json),assets));setCurrentScene(null);setStatus('Scene JSON opened.');return;}
       }
       const next=await importer.files(files,{upAxis,scale},setStatus);
+      if(operation!==roomOperation.current){setStatus('Import ignored because the room changed.');return;}
       setHistory(old=>({past:[...old.past,old.present].slice(-50),present:appendAssets(old.present,next),future:[]}));
       setSelected(workspace.items.findIndex(i=>i.missing&&next.some(a=>a.id===i.asset.id))>=0?workspace.items.findIndex(i=>i.missing&&next.some(a=>a.id===i.asset.id)):workspace.items.length);
       setSelectedPart(-1);setTime(null);setPlaying(false);setStatus(`Imported ${next.length} asset(s)`);
@@ -119,9 +122,10 @@ function App(){
   }
   async function generate(){
     setBusy(true);setError('');setStatus('Starting Forma…');
+    const operation=roomOperation.current;
     try{
       const response=await fetch('/api/generations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt,mode,provider,model})});const data=await response.json();if(!response.ok)throw new Error(data.error);
-      for(;;){await new Promise(r=>setTimeout(r,1500));const response=await fetch(`/api/generations/${data.id}`);const job=await response.json();if(!response.ok||job.status==='failed')throw new Error(job.error??job.message);setStatus(job.message);if(job.status==='succeeded'){const next=await importer.files([new File([JSON.stringify(job.project)],'forma-generated.json')],{upAxis:'Z',scale:1},setStatus);setHistory(old=>({past:[...old.past,old.present].slice(-50),present:appendAssets(old.present,next),future:[]}));setSelected(workspace.items.length);setSelectedPart(-1);setStatus(`Forma ${mode} project imported`);break;}}
+      for(;;){await new Promise(r=>setTimeout(r,1500));const response=await fetch(`/api/generations/${data.id}`);const job=await response.json();if(!response.ok||job.status==='failed')throw new Error(job.error??job.message);setStatus(job.message);if(job.status==='succeeded'){const next=await importer.files([new File([JSON.stringify(job.project)],'forma-generated.json')],{upAxis:'Z',scale:1},setStatus);if(operation!==roomOperation.current){setStatus('Forma result ignored because the room changed.');break;}setHistory(old=>({past:[...old.past,old.present].slice(-50),present:appendAssets(old.present,next),future:[]}));setSelected(workspace.items.length);setSelectedPart(-1);setStatus(`Forma ${mode} project imported`);break;}}
     }catch(e){setError((e as Error).message);setStatus('Generation failed');}finally{setBusy(false);}
   }
   async function sendAnimationFeedback(review: GifMetadata, instruction: string) {
@@ -178,7 +182,7 @@ function App(){
         <button className="fullscreen-toggle" aria-label={isFullscreen?'Exit fullscreen':'Enter fullscreen'} aria-pressed={isFullscreen} onClick={()=>void toggleFullscreen()}>{isFullscreen?'↙ Exit fullscreen':'⛶ Fullscreen'}</button>
         <button className="capture-launch" aria-expanded={captureOpen} onClick={()=>setCaptureOpen(v=>!v)}>GIF studio</button>
         <WorkspaceViewer workspace={workspace} selected={selected} selectedPart={selectedPart} time={time} focus={focus} region={captureRegion} onSelect={(i,j)=>{setSelected(i);setSelectedPart(j);}}/>
-        <CaptureTools open={captureOpen} assets={assets} room={workspace.room} selected={selected} close={()=>setCaptureOpen(false)} onRegion={setCaptureRegion} addAsset={addAsset} workspace={workspace} time={time} onFeedback={sendAnimationFeedback}/>
+        <CaptureTools open={captureOpen} assets={assets} room={workspace.room} selected={selected} close={()=>setCaptureOpen(false)} onRegion={setCaptureRegion} addAsset={addAsset} workspace={workspace} time={time} roomOperation={roomOperation.current} onFeedback={sendAnimationFeedback}/>
         <div className="hint">{time!==null?`ANIMATION ${time.toFixed(2)}s · `:''}Drag to orbit · Right-drag to pan · Scroll to zoom</div>
       </div>
       <aside className="inspector"><div className="eyebrow">INSPECTOR</div><ProjectInspector item={workspace.items[selected]} selectedPart={selectedPart} selectPart={index=>{setSelectedPart(index);setFocus(n=>n+1);}}/></aside>

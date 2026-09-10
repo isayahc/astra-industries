@@ -6,11 +6,11 @@ import type { LibraryEntry } from '../lib/library';
 import type { Asset } from '../lib/scene';
 import './cloud-library.css';
 
-export function CloudLibrary(props: { entries: LibraryEntry[]; addAsset: (asset: Asset, cloudVersionId?: string) => void }) {
+export function CloudLibrary(props: { entries: LibraryEntry[]; addAsset: (asset: Asset, cloudVersionId?: string) => void; roomOperation?: number }) {
   return cloudStorageEnabled ? <EnabledCloudLibrary {...props} /> : <p className="cloud-disabled">Cloud file storage is disabled. Your device library remains available.</p>;
 }
 
-function EnabledCloudLibrary({ entries, addAsset }: { entries: LibraryEntry[]; addAsset: (asset: Asset, cloudVersionId?: string) => void }) {
+function EnabledCloudLibrary({ entries, addAsset, roomOperation = 0 }: { entries: LibraryEntry[]; addAsset: (asset: Asset, cloudVersionId?: string) => void; roomOperation?: number }) {
   const [owner, setOwner] = useState<string | null>(null);
   const ownerRef = useRef<string | null>(null);
   const epoch = useRef(0);
@@ -42,11 +42,11 @@ function EnabledCloudLibrary({ entries, addAsset }: { entries: LibraryEntry[]; a
     return () => URL.revokeObjectURL(next);
   }, [download]);
   const isCurrent = (token: number) => mounted.current && token === epoch.current;
-  async function operate(work: (storage: CloudStorage, token: number) => Promise<void>) {
+  async function operate(work: (storage: CloudStorage, token: number, roomAtStart: number) => Promise<void>) {
     if (!owner || lock.current) return;
-    lock.current = true; const token = epoch.current;
+    lock.current = true; const token = epoch.current; const roomAtStart = roomOperation;
     setBusy(true); setError('');
-    try { await work(await connectCloudStorage(owner), token); }
+    try { await work(await connectCloudStorage(owner), token, roomAtStart); }
     catch (e) { if (isCurrent(token)) setError((e as Error).message); }
     finally { lock.current = false; if (mounted.current) setBusy(false); }
   }
@@ -80,10 +80,11 @@ function EnabledCloudLibrary({ entries, addAsset }: { entries: LibraryEntry[]; a
         {version.state === 'pending' && <p>Incomplete upload. Select the same local asset/preview and upload again to resume, or remove this copy to clean up.</p>}
         {version.state === 'deleting' && <p>Removal is incomplete. Retry removal to delete remaining objects and metadata.</p>}
         <div className="capture-actions">
-          <button disabled={busy || version.state !== 'ready'} onClick={() => void operate(async (storage, token) => {
+          <button disabled={busy || version.state !== 'ready'} onClick={() => void operate(async (storage, token, roomAtStart) => {
             setMessage('Downloading and verifying geometry…');
             const entry = await storage.load(version);
             if (!isCurrent(token)) return;
+            if(roomAtStart!==roomOperation) throw new Error('Room changed while loading this asset. Open Cloud files again to add it to the active room.');
             addAsset(entry.asset, version.id);
             setDownload(entry.preview ? { blob: entry.preview, name: `${version.id}-preview.gif` } : undefined);
             setMessage('Verified cloud asset loaded into the room.');
