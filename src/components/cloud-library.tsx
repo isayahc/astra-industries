@@ -6,11 +6,11 @@ import type { LibraryEntry } from '../lib/library';
 import type { Asset } from '../lib/scene';
 import './cloud-library.css';
 
-export function CloudLibrary(props: { entries: LibraryEntry[]; addAsset: (asset: Asset) => void }) {
+export function CloudLibrary(props: { entries: LibraryEntry[]; addAsset: (asset: Asset, cloudVersionId?: string) => void }) {
   return cloudStorageEnabled ? <EnabledCloudLibrary {...props} /> : <p className="cloud-disabled">Cloud file storage is disabled. Your device library remains available.</p>;
 }
 
-function EnabledCloudLibrary({ entries, addAsset }: { entries: LibraryEntry[]; addAsset: (asset: Asset) => void }) {
+function EnabledCloudLibrary({ entries, addAsset }: { entries: LibraryEntry[]; addAsset: (asset: Asset, cloudVersionId?: string) => void }) {
   const [owner, setOwner] = useState<string | null>(null);
   const ownerRef = useRef<string | null>(null);
   const epoch = useRef(0);
@@ -84,7 +84,7 @@ function EnabledCloudLibrary({ entries, addAsset }: { entries: LibraryEntry[]; a
             setMessage('Downloading and verifying geometry…');
             const entry = await storage.load(version);
             if (!isCurrent(token)) return;
-            addAsset(entry.asset);
+            addAsset(entry.asset, version.id);
             setDownload(entry.preview ? { blob: entry.preview, name: `${version.id}-preview.gif` } : undefined);
             setMessage('Verified cloud asset loaded into the room.');
           })}>Load cloud asset into room</button>

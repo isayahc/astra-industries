@@ -4,6 +4,8 @@ A hackathon project extending [Forma OSS](https://github.com/caid-technologies/F
 
 **Live app:** https://astra-industries.vercel.app
 
+See the [persistent workspace guide](docs/workspace.md) for cloud saves, instance transforms, keyframe animation, and the complete import → arrange → save → animate → export workflow.
+
 Optional private geometry/GIF storage: [cloud storage setup and lifecycle](docs/cloud-storage.md). Enable with `VITE_CLOUD_STORAGE_ENABLED=true` after applying its migrations; the device library and core Auth/Postgres work with it disabled.
 
 ## Vision
@@ -35,7 +37,7 @@ Upstream Forma OSS is licensed under MPL-2.0; preserve applicable notices and li
 
 ## Status
 
-Initial local workbench implemented: Forma JSON imports, STEP conversion in a Web Worker, room dimensions, orbit/pan/zoom, asset framing, part inspection, and pip-installed Forma generation/handoff. Animation and scene persistence are upcoming.
+The workbench supports Forma/STEP imports, stable editable instances, room dimensions, component inspection, keyframe animations, shared-pose GIF exports, portable scene JSON, authenticated Postgres scene saves, and optional private geometry/GIF storage. Forma generation can run separately; its local CLI bridge remains available for development.
 
 ## Run locally
 
@@ -93,7 +95,7 @@ GIF timing is rounded to the format's 10 ms tick: 15 fps becomes 70 ms/frame. Me
 2. Render a **turntable** or **sample motion** preview from its card. The latest GIF and review metadata are saved with its geometry in IndexedDB. Saving the same asset ID updates its existing entry.
 3. Refresh or reopen Astra on the same browser origin: library entries and previews remain. **Add to room** restores an instance without reimporting the source file. **Remove from library** deletes the stored asset and preview while leaving existing room instances intact.
 
-Library storage is per browser/device/origin, subject to browser quota and eviction, and not cloud synced. Clearing site data removes it. Download previews you want to keep. The room itself still resets on reload; scene persistence remains a separate feature.
+The device library is per browser/device/origin and subject to browser quota and eviction. Use the explicit Cloud files actions for private geometry/GIF transfers. Cloud scenes can be saved and reopened after reload through **Save / open scenes**; portable scene JSON also bundles geometry and animation without a cloud dependency.
 
 ### GIF checks
 

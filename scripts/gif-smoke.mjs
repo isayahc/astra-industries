@@ -29,7 +29,7 @@ async function verifyGif(link) {
 }
 async function render() {
   await studio.getByRole('button', { name: 'Render GIF', exact: true }).click();
-  await expect(studio.getByRole('status')).toContainText('GIF ready', { timeout: 90000 });
+  await expect(studio.getByRole('status', { name: 'GIF export status' })).toContainText('GIF ready', { timeout: 90000 });
   await expect(studio.getByAltText('Rendered GIF preview')).toBeVisible();
   await expect.poll(() => studio.getByAltText('Rendered GIF preview').evaluate(img => img.complete && img.naturalWidth === 320)).toBe(true);
 }
@@ -79,10 +79,10 @@ try {
   await studio.getByRole('button', { name: 'Save selected asset to library' }).click();
   await expect(studio.getByRole('article')).toHaveCount(1);
   await card.getByRole('button', { name: 'Render turntable' }).click();
-  await expect(studio.getByRole('status')).toContainText('preview saved', { timeout: 90000 });
+  await expect(studio.getByRole('status', { name: 'GIF export status' })).toContainText('preview saved', { timeout: 90000 });
   await verifyGif(card.getByRole('link', { name: 'Download preview' }));
   await card.getByRole('button', { name: 'Render sample motion' }).click();
-  await expect(studio.getByRole('status')).toContainText('preview saved', { timeout: 90000 });
+  await expect(studio.getByRole('status', { name: 'GIF export status' })).toContainText('preview saved', { timeout: 90000 });
   await verifyGif(card.getByRole('link', { name: 'Download preview' }));
   await page.screenshot({ path: 'test-results/10-library-after.png' });
   await page.reload();
@@ -100,7 +100,7 @@ try {
   await studio.getByLabel('Duration').selectOption('4');
   await studio.getByRole('button', { name: 'Render GIF', exact: true }).click();
   await studio.getByRole('button', { name: 'Cancel export' }).click();
-  await expect(studio.getByRole('status')).toContainText('cancelled');
+  await expect(studio.getByRole('status', { name: 'GIF export status' })).toContainText('cancelled');
   await page.getByRole('button', { name: 'Enter fullscreen' }).click();
   await expect(studio).toBeVisible();
   await expect.poll(() => page.evaluate(() => document.fullscreenElement.contains(document.querySelector('.capture-panel')))).toBe(true);

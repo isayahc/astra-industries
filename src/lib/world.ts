@@ -1,8 +1,9 @@
 import * as THREE from 'three';
 import type { Asset } from './scene';
+import type { EvaluatedPose } from './workspace';
 
 /** The same geometry, materials and instance placement feed the viewport and GIFs. */
-export function createWorld(assets: Asset[], room: number[], selected = -1, selectedPart = -1, positions: Array<[number, number, number]> = []) {
+export function createWorld(assets: Asset[], room: number[], selected = -1, selectedPart = -1, poses?: EvaluatedPose[]) {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color('#192322');
   scene.add(new THREE.HemisphereLight(0xffffff, 0x63736b, 3));
@@ -26,14 +27,36 @@ export function createWorld(assets: Asset[], room: number[], selected = -1, sele
          color: part.color ? new THREE.Color(...part.color) : index === selected && assets[index].parts.indexOf(part) === selectedPart ? '#e8ffb5' : index === selected ? '#c8ef82' : '#b9c9c5',
         metalness: .2, roughness: .55,
       });
-      group.add(new THREE.Mesh(geometry, material));
+      const mesh = new THREE.Mesh(geometry, material);
+      geometry.computeBoundingBox(); mesh.userData.pivot = geometry.boundingBox!.getCenter(new THREE.Vector3()); mesh.userData.partId = part.id;
+      mesh.matrixAutoUpdate = false;
+      group.add(mesh);
     });
-    const position = positions[index] || [index * (asset.dimensions[0] + .25), 0, 0];
-    group.position.set(position[0], position[1], position[2]);
     scene.add(group);
     return group;
   });
+  if (poses) applyWorldPoses(groups, poses);
   return { scene, groups, environment, dispose: () => disposeScene(scene) };
+}
+
+export function applyWorldPoses(groups: THREE.Group[], poses: EvaluatedPose[]) {
+  groups.forEach((group, index) => {
+    const pose = poses[index]; if (!pose) return;
+    group.position.fromArray(pose.position); group.rotation.set(...pose.rotation.map(THREE.MathUtils.degToRad) as [number,number,number]); group.visible = pose.visible;
+    group.children.forEach(object => {
+      const mesh = object as THREE.Mesh;
+      const part = pose.parts[mesh.userData.partId];
+      mesh.matrix.identity();
+      if (part) {
+        const pivot = mesh.userData.pivot as THREE.Vector3;
+        mesh.matrix.makeTranslation(pivot.x + part.position[0], pivot.y + part.position[1], pivot.z + part.position[2]);
+        mesh.matrix.multiply(new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(...part.rotation.map(THREE.MathUtils.degToRad) as [number,number,number])));
+        mesh.matrix.multiply(new THREE.Matrix4().makeTranslation(-pivot.x, -pivot.y, -pivot.z));
+      }
+      mesh.matrixWorldNeedsUpdate = true;
+    });
+    group.updateMatrixWorld(true);
+  });
 }
 
 export function disposeScene(scene: THREE.Object3D) {

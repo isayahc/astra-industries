@@ -33,7 +33,7 @@ try {
   await page.getByText('Build with Forma', { exact: true }).click();
   await page.getByRole('button', { name: 'Build and import' }).click();
   await page.getByRole('status').filter({ hasText: /Forma simulation project imported|Generation failed/ }).waitFor({ timeout: 90000 });
-  console.log('Forma generation:', await page.getByRole('status').innerText());
+  console.log('Forma generation:', await page.locator('footer [role=status]').innerText());
   if (await page.getByRole('alert').count()) console.log('Generation error:', await page.getByRole('alert').innerText());
   await page.setViewportSize({ width: 390, height: 844 });
   await page.screenshot({ path: 'test-results/1-4-mobile.png', fullPage: true });

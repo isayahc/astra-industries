@@ -24,7 +24,7 @@ try {
   await studio.getByLabel('GIF resolution').selectOption('320');
   await studio.getByLabel('Duration').selectOption('2');
   await studio.getByRole('button', { name: 'Render GIF', exact: true }).click();
-  await expect(studio.getByRole('status')).toContainText('GIF ready', { timeout: 90000 });
+  await expect(studio.getByRole('status', { name: 'GIF export status' })).toContainText('GIF ready', { timeout: 90000 });
   await expect.poll(() => studio.getByAltText('Rendered GIF preview').evaluate(img => img.complete && img.naturalWidth === 320)).toBe(true);
   await mkdir('test-results', { recursive: true });
   await page.screenshot({ path: 'test-results/vercel-production.png' });

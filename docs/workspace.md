@@ -1,0 +1,51 @@
+# Persistent animated workspace
+
+## Complete workflow
+
+1. Generate projects in Forma separately, then import the compiled JSON and any companion STEP files into Astra.
+2. Select a scene instance. Edit its base XYZ position and rotation, rename it, duplicate it, change visibility, or delete it. Undo/redo retains up to 50 workspace edits. Reset puts that instance at the world origin with zero rotation.
+3. Choose **Animate**. Select the whole instance or a component target. Set a time, edit keyframe position/rotation, and click **Add / update keyframe**. A key at the same time is replaced. Existing key buttons seek to their time; their delete buttons remove them.
+4. Play/pause, scrub, or reset to the base layout. **GIF studio → Authored timeline animation** exports a selected time range (up to 4 seconds), with per-frame instance/component transforms in the review JSON. Ordinary turntables use the currently previewed pose, or base poses when the timeline is reset.
+5. Sign in, choose **Save / open scenes**, and save a named cloud scene. **Include cloud geometry** uploads missing asset bundles so another browser can reopen the room. Clear that checkbox for metadata-only saves. Open saved scenes explicitly from the list after refreshing.
+6. **Export scene JSON** produces a portable manifest with bundled geometry and tracks. Import that JSON through the normal file picker to reopen it without cloud services.
+
+## Shared instance model
+
+`Workspace` owns room dimensions, `SceneItem[]`, and an `Animation` document. Each item has a stable UUID, a reference to immutable imported geometry, a display name, base position/rotation, visibility, and optionally a cloud file-version ID. Repeated instances share source geometry but have independent identities and transforms. All import/library/cloud entry points use the same placement function; new assets are placed to the right of existing bounds with a gap.
+
+The viewport and GIF renderer both use `evaluateWorkspace` and `applyWorldPoses`. Renderers never mutate imported Forma data. The viewport keeps its renderer/camera alive while transforms or timeline time change; ordinary edits do not repeatedly recreate WebGL contexts or reset camera navigation.
+
+Positions are meters with Y up. Instance rotations are XYZ Euler degrees. Keyframe positions interpolate linearly; rotations use shortest-path quaternion interpolation. Poses hold the first/last key outside the keyed interval. Instance keys are absolute world poses; component keys are offsets from imported geometry, rotated about the component's center. This is visual animation, not physics or electrical revalidation.
+
+Tracks target stable instance IDs and optional source part IDs. Deleting an instance removes its tracks. Missing/duplicate targets, invalid keyframes, unsupported versions, and non-finite transforms are rejected during scene import. GIF metadata records exact sampled frame times and evaluated transforms; GIF's 10 ms tick still determines playback timing.
+
+## Postgres and storage
+
+`SceneRepository` uses a session-bound authenticated Supabase client. Core metadata operations do not depend on the optional storage flag:
+
+- Explicit scene save/list/open/delete and explicit device-library metadata sync operate through Postgres.
+- `save_workspace_scene` writes the versioned scene document and `scene_asset_files` references in one transaction. Referenced files must be ready and belong to the same user and asset identity.
+- Each scene has a revision. A save against a stale revision fails visibly instead of overwriting another device's edits. Reopen the current revision or choose **Save as new copy**. Delete also checks the revision.
+- A failed first save retains its generated scene ID in the current UI, so retrying does not blindly create another scene. An uncertain committed write can be recovered through the scene list. Uploaded file intents remain independently visible/recoverable in the cloud library if the final scene save fails.
+- Deleting a scene releases references, not shared geometry files. Object deletion is blocked while another scene references the version.
+- Sign-out/account changes clear the active workspace, scene selection, and user-specific cloud lists. Source files already explicitly stored in the device library remain local files.
+
+Opening a metadata-only scene on a device without the source files produces labeled red **missing geometry placeholders** at the saved transforms. Reimporting the exact original asset replaces placeholders while retaining instance IDs and animation. Missing geometry cannot be exported as a review GIF. Source digests, project IDs, and Forma revision numbers identify the expected design. Cloud files are downloaded and integrity-checked when storage is enabled.
+
+Scene lists and the metadata catalog currently show the latest 200 records. Binary files keep the storage feature's 25 MiB/file and 50 MiB/bundle limits; scene JSON in Postgres is limited to 2 MiB and 1,000 instances. Local portable scene files are limited to 75 MiB on import. Animation documents allow up to 120 seconds, 1,000 tracks, and 10,000 keys. Large models still require practical performance validation on the target hardware.
+
+## Forma data and inspector
+
+The importer retains sanitized source documents and a known-field IR model. Raw IR, project/hardware wrappers, compiled manifests, and namespace objects preserve overview, component identities, BOM, validation, project revision, agent provenance, and artifact declarations. Namespace BOM/validation payloads and companion-CAD projects retain their metadata. Credential-like fields are excluded.
+
+The inspector presents labeled overview/source data, severity-tagged validation, BOM rows, mechanical information, component metadata, and selectable geometry. Raw retained JSON remains available as an advanced view. Duplicate/missing component refs, unknown placement refs, ambiguous artifact declarations, and checksum failures produce import diagnostics. Inline CAD with explicit component refs can coexist with envelope-only components; unmatched whole-assembly CAD is not guessed into component identities.
+
+`scripts/workspace-test.ts` contains synthetic, sanitized contract fixtures for SDK/OpenCode/Codex-shaped artifacts, namespaces, mixed geometry, and companion CAD. These verify the handoff format; they are not claims that live agent generation was run. Broader real-project fixtures and CAD shape mapping can extend this suite.
+
+## Verification
+
+- `npm run test:workspace`: pure contract/model checks, source immutability, stable transforms, component sampling, rotations, scene serialization and missing-asset recovery.
+- `npm run test:workspace-live`: real Supabase Auth/Postgres/Storage with isolated Chrome contexts. Set the test-only keys documented in `cloud-storage.md`. Verifies timeline/GIF frame agreement, cloud save/reopen, shared file protection, conflicts, user isolation, portable scene JSON, and missing geometry restoration. Test data is cleaned up.
+- Existing Auth, fullscreen, CAD, GIF and import smoke tests remain applicable.
+
+`ASTRA_BASE_URL` can point the live workspace test to the deployed app. Use a dedicated test project for new deployments and never place test admin credentials in Vite environment variables.

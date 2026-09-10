@@ -14,6 +14,8 @@
     "test:gif": "node scripts/gif-smoke.mjs",
     "test:auth": "node scripts/auth-smoke.mjs",
     "test:storage": "tsx scripts/cloud-storage-smoke.ts",
+    "test:workspace": "tsx scripts/workspace-test.ts",
+    "test:workspace-live": "tsx scripts/workspace-smoke.ts",
     "test:storage-disabled": "node scripts/cloud-storage-disabled-smoke.mjs",
     "test:fullscreen": "node scripts/fullscreen-smoke.mjs && node scripts/fullscreen-import-smoke.mjs"
   },

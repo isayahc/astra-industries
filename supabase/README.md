@@ -27,7 +27,7 @@ The CLI is pinned as a development dependency. Local link details and database c
 
 Postgres and Auth are core (#12). S3-compatible object storage is a separate feature (#13); its migrations provision the private `astra-assets` bucket and file-version/reference tables. The local Storage services remain disabled by default. See [cloud storage](../docs/cloud-storage.md) for independent enablement, policies, and lifecycle tests. The full local `config.toml` has not been pushed to the hosted Auth service. Only the Site URL and redirect allowlist from `hosted-auth/supabase/config.toml` have been applied.
 
-The app currently continues to use its existing IndexedDB library. GitHub Auth/session controls are implemented; cloud save/load adapters remain to be implemented under #12. Database tables and sign-in alone do not enable cloud persistence. Binary CAD/geometry and GIF previews belong to #13 rather than these metadata tables.
+The app retains an explicit device library in IndexedDB and now supports authenticated cloud scene save/list/open/delete and library metadata sync. `save_workspace_scene` writes scene documents and storage references atomically with optimistic revision checks. Sign-in does not automatically upload local files. See [the workspace guide](../docs/workspace.md); binaries use the separate optional storage feature.
 
 Free-plan quotas include 500 MB database size, 1 GB object storage, and 5 GB egress; inactive free projects may be paused after a week. Keep binary geometry out of metadata JSON. Creating this project did not request a paid plan, paid compute size, or add-on.
 

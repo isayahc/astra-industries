@@ -1,6 +1,7 @@
 import type { Asset, Vec3 } from './scene';
+import type { Workspace } from './workspace';
 
-type Snapshot = { assets: Asset[]; room: number[]; selected: number; positions?: Vec3[]; savedAt: number };
+type Snapshot = { assets: Asset[]; room: number[]; selected: number; positions?: Vec3[]; workspace?: Workspace; savedAt: number };
 const TAB_KEY = 'astra-oauth-workspace';
 async function openDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -18,10 +19,10 @@ async function transact<T>(db: IDBDatabase, action: (store: IDBObjectStore) => I
     tx.onabort = () => { db.close(); reject(new Error('Could not preserve the room for sign-in. Browser storage may be full.')); };
   });
 }
-export async function preserveAuthWorkspace(assets: Asset[], room: number[], selected: number, positions: Vec3[]) {
+export async function preserveAuthWorkspace(assets: Asset[], room: number[], selected: number, positions: Vec3[], workspace?: Workspace) {
   const key = sessionStorage.getItem(TAB_KEY) || crypto.randomUUID();
   sessionStorage.setItem(TAB_KEY, key);
-  await transact(await openDatabase(), store => store.put({ assets, room, selected, positions, savedAt: Date.now() } satisfies Snapshot, key));
+  await transact(await openDatabase(), store => store.put({ assets, room, selected, positions, workspace, savedAt: Date.now() } satisfies Snapshot, key));
 }
 export async function restoreAuthWorkspace(): Promise<Snapshot | null> {
   const key = sessionStorage.getItem(TAB_KEY);
