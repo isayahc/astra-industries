@@ -1,5 +1,5 @@
 import { BoxGeometry, Euler, Matrix4 } from 'three';
-import { finalizeAsset, type Asset, type Part, type Vec3 } from './scene';
+import { finalizeAsset, type Asset, type FormaProject, type Part, type Vec3 } from './scene';
 
 type RecordValue = Record<string, unknown>;
 export function record(value: unknown): RecordValue {
@@ -21,7 +21,7 @@ function vector(value: unknown, label: string, positive = false): Vec3 {
 
 export type FormaDocument = {
   name: string; projectId?: string; version: string; mechanical: RecordValue;
-  cad: unknown; definitions: RecordValue[]; components: RecordValue[];
+  cad: unknown; definitions: RecordValue[]; components: RecordValue[]; project: FormaProject;
 };
 
 export function readFormaDocument(input: unknown, filename: string): FormaDocument {
@@ -32,6 +32,7 @@ export function readFormaDocument(input: unknown, filename: string): FormaDocume
   if (root.format === 'forma-project' && root.version !== 1) throw new Error(`Unsupported Forma manifest version: ${root.version}. Expected 1.`);
   const object = record(root.project_object ?? (root.object_type ? root : undefined));
   let ir = record(root.project_ir ?? root.hardware_ir ?? root);
+  let source: FormaProject['source'] = root.project_ir ? 'project_ir' : root.hardware_ir ? 'hardware_ir' : 'namespace';
   let projectId = text(root.project_id);
   let version: string;
   if (Object.keys(object).length && !root.project_ir && !root.hardware_ir) {
@@ -45,6 +46,7 @@ export function readFormaDocument(input: unknown, filename: string): FormaDocume
     const schema = text(meta.hardware_ir_version, '0.2');
     if (!['0.1', '0.2'].includes(schema)) throw new Error(`Unsupported Hardware IR version: ${schema}. Expected 0.1 or 0.2.`);
     ir = { ...payload('product.mech'), ...payload('product.overview'), ...payload('product.electrical') };
+    source = 'namespace';
     projectId = text(object.object_id);
     version = `${schema} / revision ${object.version}`;
   } else {
@@ -53,6 +55,7 @@ export function readFormaDocument(input: unknown, filename: string): FormaDocume
   }
   const metadata = record(ir.assembly_metadata);
   const overview = record(ir.overview);
+  const project: FormaProject = { projectId: projectId || undefined, revision: version, hardwareIrVersion: version.split(' / ')[0], ir, source };
   return {
     name: text(root.title, text(overview.title, filename.replace(/\.json$/i, ''))),
     projectId: projectId || text(metadata.project_id) || undefined,
@@ -60,7 +63,7 @@ export function readFormaDocument(input: unknown, filename: string): FormaDocume
     mechanical: record(ir.mechanical),
     cad: ir.cad_model,
     definitions: Array.isArray(ir.part_definitions) ? ir.part_definitions.map(record) : [],
-    components: Array.isArray(ir.components) ? ir.components.map(record) : [],
+    components: Array.isArray(ir.components) ? ir.components.map(record) : [], project,
   };
 }
 
@@ -138,5 +141,6 @@ export function importForma(input: unknown, filename: string, digest: string): A
   }
   if (!parts.length) throw new Error('This Forma project has no usable geometry. Include its referenced STEP file, inline CAD meshes, or mechanical placements.');
   return finalizeAsset({ id, name: doc.name, source: { kind: 'forma', filename, digest, projectId: doc.projectId, version: doc.version }, parts,
+    formaProject: doc.project,
     hierarchy: { id: `${id}/root`, name: doc.name, partIds: parts.map(p => p.id), children: [] }, warnings });
 }

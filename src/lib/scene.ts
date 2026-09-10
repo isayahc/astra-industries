@@ -10,6 +10,17 @@ export type Part = {
   metadata: Record<string, string>;
 };
 export type AssetNode = { id: string; name: string; partIds: string[]; children: AssetNode[] };
+export type Instance = { id: string; assetId: string; name: string; position: Vec3 };
+export type Room = { width: number; depth: number; height: number; walls: boolean };
+
+export type FormaProject = {
+  projectId?: string;
+  revision?: string;
+  hardwareIrVersion: string;
+  ir: Record<string, unknown>;
+  source: 'project_ir' | 'hardware_ir' | 'namespace';
+};
+
 export type Asset = {
   schemaVersion: 1;
   id: string;
@@ -22,9 +33,8 @@ export type Asset = {
   dimensions: Vec3;
   originOffset: Vec3;
   warnings: string[];
+  formaProject?: FormaProject;
 };
-export type Instance = { id: string; assetId: string; name: string; position: Vec3 };
-export type Room = { width: number; depth: number; height: number; walls: boolean };
 
 export function finalizeAsset(asset: Omit<Asset, 'dimensions' | 'originOffset' | 'units' | 'upAxis' | 'schemaVersion'>): Asset {
   if (!asset.parts.length) throw new Error('No renderable geometry was found in this file.');
