@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.venv/
+.env
+.astra/
+public/vendor/
+test-results/
+playwright-report/
+*.log
+__pycache__/
