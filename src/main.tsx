@@ -42,13 +42,15 @@ function App(){
   const isFullscreen=fullscreen||expanded;const restoreAfterPicker=useRef(false);
   const owner=useUserId();const previousOwner=useRef<string|null>(null);
   const[draftReady,setDraftReady]=useState(false);const draftOwner=useRef<string|null>(null);const draftEpoch=useRef(0);const[localSaved,setLocalSaved]=useState(false);
+  const [adoptionPending,setAdoptionPending]=useState(false);
   const [draftRecovery,setDraftRecovery]=useState<{scope:string;message:string}|null>(null);
   function change(next:Workspace){setHistory(old=>({past:[...old.past,old.present].slice(-50),present:next,future:[]}));}
   function replace(next:Workspace){setPlaying(false);setTime(null);setSelected(-1);setSelectedPart(-1);setHistory({past:[],present:next,future:[]});setFocus(n=>n+1);}
   useEffect(()=>{
-    if(previousOwner.current&&previousOwner.current!==owner){draftEpoch.current++;draftOwner.current=owner;replace(emptyWorkspace());setCurrentScene(null);setCaptureOpen(false);setStatus('Account changed; cloud workspace cleared.');}
+    if(previousOwner.current&&previousOwner.current!==owner){draftEpoch.current++;draftOwner.current=owner;setAdoptionPending(false);replace(emptyWorkspace());setCurrentScene(null);setCaptureOpen(false);setStatus('Account changed; cloud workspace cleared.');}
+    if(!previousOwner.current&&owner&&draftOwner.current!==owner&&workspace.items.length){setAdoptionPending(true);setBusy(true);setStatus('Choose what to do with this anonymous draft.');}
     previousOwner.current=owner;
-  },[owner]);
+  },[owner,workspace.items.length]);
   useEffect(()=>{
     let active=true;const epoch=draftEpoch.current;let requestedScope='guest';
     const fallback=window.setTimeout(()=>{if(active){setDraftReady(true);setBusy(false);setDraftRecovery({scope:requestedScope,message:'Saved workspace loading exceeded 12 seconds. Retry or recover it without discarding the stored data.'});setError('Saved workspace loading timed out.');}},12000);
@@ -92,6 +94,14 @@ function App(){
   function addAsset(asset:Asset,cloudVersionId?:string){
     setHistory(old=>({past:[...old.past,old.present].slice(-50),present:appendAssets(old.present,[asset],cloudVersionId),future:[]}));
     setSelected(workspace.items.length);setSelectedPart(-1);setTime(null);setPlaying(false);setStatus(`Added ${asset.name} from library`);
+  }
+  function adoptAnonymousDraft(){
+    if(!owner)return;
+    draftOwner.current=owner;setRoomId(crypto.randomUUID());setCurrentScene(null);setAdoptionPending(false);setBusy(false);setStatus('Anonymous draft adopted. Save it to your account when ready.');
+  }
+  function discardAnonymousDraft(){
+    if(!owner)return;
+    draftOwner.current=owner;replace(emptyWorkspace());setRoomId(crypto.randomUUID());setCurrentScene(null);setAdoptionPending(false);setBusy(false);setStatus('Anonymous draft retained locally; a clean account workspace is active.');
   }
   async function load(files:File[]){
     if(busy||!files.length)return;setBusy(true);setError('');
@@ -173,6 +183,7 @@ function App(){
       </div>
       <aside className="inspector"><div className="eyebrow">INSPECTOR</div><ProjectInspector item={workspace.items[selected]} selectedPart={selectedPart} selectPart={index=>{setSelectedPart(index);setFocus(n=>n+1);}}/></aside>
     </main><footer><span role="status">{busy?'◌ ':'● '}{status}</span><span>FORMA POWERED · LOCAL + CLOUD</span></footer>
+    {adoptionPending&&(isFullscreen&&stage.current?createPortal(<div className="draft-recovery adoption" role="dialog" aria-label="Adopt anonymous draft"><b>Anonymous draft found</b><p>This workspace was created before sign-in. Adopt it into your account, or start a separate clean workspace. The anonymous draft is retained either way.</p><div className="capture-actions"><button onClick={adoptAnonymousDraft}>Adopt draft</button><button onClick={discardAnonymousDraft}>Start clean workspace</button></div></div>,stage.current):<div className="draft-recovery adoption" role="dialog" aria-label="Adopt anonymous draft"><b>Anonymous draft found</b><p>This workspace was created before sign-in. Adopt it into your account, or start a separate clean workspace. The anonymous draft is retained either way.</p><div className="capture-actions"><button onClick={adoptAnonymousDraft}>Adopt draft</button><button onClick={discardAnonymousDraft}>Start clean workspace</button></div></div>)}
     {draftRecovery&&(isFullscreen&&stage.current?createPortal(<div className="draft-recovery" role="alert"><b>Saved workspace needs recovery</b><p>{draftRecovery.message}</p><div className="capture-actions"><button disabled={busy} onClick={()=>{setDraftRecovery(null);setError('');setDraftReady(false);window.location.reload();}}>Retry loading</button><button disabled={busy} onClick={()=>void exportCorruptDraft()}>Download backup</button><button disabled={busy} onClick={()=>void resetCorruptDraft()}>Start clean workspace</button></div></div>,stage.current):<div className="draft-recovery" role="alert"><b>Saved workspace needs recovery</b><p>{draftRecovery.message}</p><div className="capture-actions"><button disabled={busy} onClick={()=>{setDraftRecovery(null);setError('');setDraftReady(false);window.location.reload();}}>Retry loading</button><button disabled={busy} onClick={()=>void exportCorruptDraft()}>Download backup</button><button disabled={busy} onClick={()=>void resetCorruptDraft()}>Start clean workspace</button></div></div>)}
     {error&&(isFullscreen&&stage.current?createPortal(<div className="error" role="alert">{error}<button aria-label="Dismiss error" onClick={()=>setError('')}>×</button></div>,stage.current):<div className="error" role="alert">{error}<button aria-label="Dismiss error" onClick={()=>setError('')}>×</button></div>)}
   </>;

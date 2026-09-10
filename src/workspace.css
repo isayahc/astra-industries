@@ -3,3 +3,4 @@
 .saved-scene.active-scene{border-color:#c8ef82;background:#1a2b20}
 .metadata-row{border-bottom:1px solid #354638;padding:8px 0}.metadata-row p{margin:0 0 8px}
 .draft-recovery{position:fixed;left:50%;bottom:48px;transform:translateX(-50%);z-index:120;width:min(620px,calc(100vw - 32px));padding:18px;background:#42261f;color:#ffe9df;border:1px solid #bd7865;border-radius:10px;box-shadow:0 14px 40px #0008}.draft-recovery p{color:#ffe9df;margin:8px 0 14px}.draft-recovery button{background:#5b362c}.draft-recovery button:last-child{background:#c8ef82;color:#18221b}
+.draft-recovery.adoption{background:#1b3024;border-color:#82a868;color:#eefbdc}.draft-recovery.adoption p{color:#d5e8ce}.draft-recovery.adoption button{background:#2c4b35}.draft-recovery.adoption button:first-child{background:#c8ef82;color:#18221b}
