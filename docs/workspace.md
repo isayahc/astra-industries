@@ -50,4 +50,12 @@ The inspector presents labeled overview/source data, severity-tagged validation,
 - `npm run test:workspace-live`: real Supabase Auth/Postgres/Storage with isolated Chrome contexts. Set the test-only keys documented in `cloud-storage.md`. Verifies timeline/GIF frame agreement, cloud save/reopen, shared file protection, conflicts, user isolation, portable scene JSON, and missing geometry restoration. Test data is cleaned up.
 - Existing Auth, fullscreen, CAD, GIF and import smoke tests remain applicable.
 
+## Forma animation feedback
+
+GIF studio's authored-animation export records the evaluated frame poses. **Send feedback to Forma** stores those poses, the animation manifest, source identities, and a user instruction in `.astra/feedback/latest.json`. The local OpenCode command `/forma-feedback` consumes that package and calls Forma's `forma.opencode.update_project` MCP tool. Astra then reimports the revised compiled project for another animation review. The package is scrubbed for credential-like fields and is not sent to cloud automatically.
+
+## CLI room transfer
+
+The `astra` CLI uses the same Supabase Auth account as the browser. `astra auth login` uses GitHub OAuth through a local callback, `astra rooms list` lists owned cloud rooms, `astra rooms export` downloads a portable manifest, `astra rooms import` saves a local manifest as a new cloud room, and `astra rooms validate` checks a local file without network access. CLI cloud transfer deliberately excludes binary geometry; geometry upload remains an authenticated Astra browser operation through the existing storage policy.
+
 `ASTRA_BASE_URL` can point the live workspace test to the deployed app. Use a dedicated test project for new deployments and never place test admin credentials in Vite environment variables.

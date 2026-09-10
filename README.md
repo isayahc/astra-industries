@@ -57,6 +57,56 @@ On macOS/Linux use `.venv/bin/python` for pip installation. Forma is installed t
 
 Use **Build with Forma → Deterministic demo** to verify the full creation/import flow without provider credentials. For live generation, configure the appropriate provider environment variables in `.env` (see `.env.example`) and enter its provider/model in the UI. Live provider calls have not yet been verified in this project.
 
+### Optional Forma MCP demo
+
+The repository includes a project-local OpenCode configuration for the Forma OSS MCP server. It is local-only and does not affect the Vercel build or browser bundle. Astra's file import and existing local generation bridge continue to work when Forma MCP is not installed or running.
+
+In a second checkout, start Forma OSS using its documented setup:
+
+```powershell
+py -3 .\scripts\development\setup-opencode.py --root . --workspace "$HOME\forma-workspace" --install-cli
+.\scripts\development\dev.ps1
+```
+
+The Forma backend must be available at `http://127.0.0.1:8000/mcp`. Then, from this Astra checkout:
+
+```powershell
+opencode mcp list
+opencode
+```
+
+Use the `/forma-demo` command in OpenCode. It compiles a validated project to `demo/forma-project.json`; import that file into Astra with **Import project**. The generated `demo/` directory is ignored by Git. Restart OpenCode after changing `opencode.json` because project configuration is loaded at startup.
+
+If the MCP server is unavailable, use the deterministic Forma demo or import an existing Forma JSON/STEP project as usual.
+
+### Animation feedback loop
+
+Render **Authored timeline animation** in GIF studio, enter feedback such as a clearance or motion change, and choose **Send feedback to Forma**. Astra saves a scrubbed review package to `.astra/feedback/latest.json`; it contains the room manifest, sampled frame poses, animation tracks, and the instruction, but not credentials or geometry secrets.
+
+In OpenCode, run `/forma-feedback`. It reads the review, updates the Forma project through `forma.opencode.update_project`, and writes the revised compiled manifest back to `demo/forma-project.json`. Reimport that manifest into Astra and render the animation again. This is intentionally a human-reviewed loop; Astra never silently changes electrical or mechanical design data.
+
+### Astra CLI
+
+Install the local CLI from this checkout:
+
+```powershell
+npm install
+npm link
+astra auth login
+```
+
+`astra auth login` opens GitHub and stores the Supabase session in the user's Astra CLI config. Add `http://127.0.0.1:54331/callback` to the Supabase Auth redirect allowlist for the deployed Supabase project, or set `ASTRA_CLI_REDIRECT_URL` to an allowlisted callback. The CLI uses the same Astra account as the browser.
+
+```powershell
+astra rooms list
+astra rooms validate .\astra-scene.json
+astra rooms import .\astra-scene.json --name "Lab demo"
+astra rooms export <room-id> .\astra-scene.json
+astra auth logout
+```
+
+The browser workbench remains the local room editor and can import/export portable scene JSON without signing in. The CLI transfers those manifests to and from cloud; binary geometry is not uploaded by the CLI and can be attached from Astra when cloud storage is enabled.
+
 ## Import contracts
 
 - Forma: Hardware IR 0.1/0.2, `project_ir` / `hardware_ir` wrappers, `forma-project` manifest v1, and `forma.project` namespace objects. Object versions are revision counters. Mechanical placements and inline CAD mesh vertices use millimeters with Z up.

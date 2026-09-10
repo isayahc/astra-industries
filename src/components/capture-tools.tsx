@@ -29,10 +29,10 @@ function LibraryCard({ entry, disabled, render, add, remove }: {
   </article>;
 }
 
-export function CaptureTools({ open, assets, room, selected, close, addAsset, onRegion, workspace, time }: {
+export function CaptureTools({ open, assets, room, selected, close, addAsset, onRegion, workspace, time, onFeedback }: {
   open: boolean; assets: Asset[]; room: number[]; selected: number; close: () => void;
   addAsset: (asset: Asset, cloudVersionId?: string) => void; onRegion: (region: FloorRegion | null) => void;
-  workspace?: Workspace; time?: number | null;
+  workspace?: Workspace; time?: number | null; onFeedback?: (review: GifResult['metadata'], instruction: string) => Promise<void>;
 }) {
   const [tab, setTab] = useState<'export' | 'library'>('export');
   const [scope, setScope] = useState<GifOptions['scope']>('room');
@@ -50,6 +50,7 @@ export function CaptureTools({ open, assets, room, selected, close, addAsset, on
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(0);
   const [result, setResult] = useState<GifResult>();
+  const [feedback, setFeedback] = useState('');
   const [metadataBlob, setMetadataBlob] = useState<Blob>();
   const controller = useRef<AbortController | null>(null);
   const resultUrl = useBlobUrl(result?.blob);
@@ -106,6 +107,13 @@ export function CaptureTools({ open, assets, room, selected, close, addAsset, on
       else { setMessage('Export did not complete.'); setError((e as Error).message); }
     } finally { setBusy(false); controller.current = null; }
   }
+  async function sendFeedback() {
+    if (!result || !onFeedback || !feedback.trim()) return;
+    setBusy(true); setError('');
+    try { await onFeedback(result.metadata, feedback); setMessage('Animation feedback sent to Forma.'); }
+    catch (e) { setError((e as Error).message); }
+    finally { setBusy(false); }
+  }
   if (!open) return null;
   return <section className="capture-panel" aria-label="GIF studio">
     <div className="capture-heading"><div><div className="eyebrow">VISUAL REVIEW</div><h2>GIF studio</h2></div><button aria-label="Close GIF studio" onClick={() => { controller.current?.abort(); close(); }}>×</button></div>
@@ -136,6 +144,6 @@ export function CaptureTools({ open, assets, room, selected, close, addAsset, on
     {busy && controller.current && <div className="capture-progress"><progress aria-label="GIF export progress" value={progress} max={1} /><button onClick={() => controller.current?.abort()}>Cancel export</button></div>}
     <p role="status" aria-label="GIF export status">{message}</p>
     {error && <p className="capture-error" role="alert">{error}</p>}
-    {resultUrl && result && <div className="capture-result"><img src={resultUrl} alt="Rendered GIF preview" /><p>{result.filename}<br />{result.metadata.durationSeconds.toFixed(2)} seconds · loops continuously</p><div className="capture-actions"><a href={resultUrl} download={result.filename}>Download GIF</a><a href={metadataUrl} download={result.filename.replace(/\.gif$/, '.json')}>Download review metadata</a></div></div>}
+    {resultUrl && result && <div className="capture-result"><img src={resultUrl} alt="Rendered GIF preview" /><p>{result.filename}<br />{result.metadata.durationSeconds.toFixed(2)} seconds · loops continuously</p><div className="capture-actions"><a href={resultUrl} download={result.filename}>Download GIF</a><a href={metadataUrl} download={result.filename.replace(/\.gif$/, '.json')}>Download review metadata</a></div>{result.metadata.motion === 'animation' && onFeedback && <div className="feedback-box"><label>Feedback for Forma<textarea aria-label="Animation feedback" value={feedback} maxLength={4000} placeholder="Example: raise the display assembly during the final lift so it clears the enclosure." onChange={e => setFeedback(e.target.value)} /></label><button disabled={busy || !feedback.trim()} onClick={() => void sendFeedback()}>Send feedback to Forma</button><small>The review is saved locally and consumed by the Forma/OpenCode loop. It does not change the room automatically.</small></div>}</div>}
   </section>;
 }

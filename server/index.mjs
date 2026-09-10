@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import { formaHealth, generationArgs, runGeneration } from './forma.mjs';
+import { saveAnimationFeedback } from './feedback.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const app = express();
@@ -22,6 +23,10 @@ app.use('/api', (req, res, next) => {
 });
 app.use(express.json({ limit: '64kb' }));
 app.get('/api/health', async (_req, res) => res.json(await formaHealth(root)));
+app.post('/api/forma/feedback', async (req, res) => {
+  try { return res.status(201).json(await saveAnimationFeedback(root, req.body)); }
+  catch (error) { return res.status(400).json({ error: error.message }); }
+});
 app.post('/api/generations', (req, res) => {
   try { generationArgs(req.body ?? {}, 'project.json'); } catch (error) { return res.status(400).json({ error: error.message }); }
   if ([...jobs.values()].some(job => job.status === 'running')) return res.status(409).json({ error: 'A Forma generation is already running. Wait for it to finish.' });
