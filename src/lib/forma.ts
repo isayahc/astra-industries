@@ -140,7 +140,8 @@ export function importForma(input: unknown, filename: string, digest: string): A
     if (doc.cad) warnings.push('Referenced CAD is unavailable or unsupported. Select its STEP file together with the JSON to resolve local geometry.');
   }
   if (!parts.length) throw new Error('This Forma project has no usable geometry. Include its referenced STEP file, inline CAD meshes, or mechanical placements.');
+  const hierarchy = { id: `${id}/root`, name: doc.name, partIds: [], children: parts.map(part => ({ id: part.id, name: part.name, partIds: [part.id], children: [] })) };
   return finalizeAsset({ id, name: doc.name, source: { kind: 'forma', filename, digest, projectId: doc.projectId, version: doc.version }, parts,
     formaProject: doc.project,
-    hierarchy: { id: `${id}/root`, name: doc.name, partIds: parts.map(p => p.id), children: [] }, warnings });
+    hierarchy, warnings });
 }
