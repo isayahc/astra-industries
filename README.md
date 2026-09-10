@@ -4,6 +4,8 @@ A hackathon project extending [Forma OSS](https://github.com/caid-technologies/F
 
 **Live app:** https://astra-industries.vercel.app
 
+Optional private geometry/GIF storage: [cloud storage setup and lifecycle](docs/cloud-storage.md). Enable with `VITE_CLOUD_STORAGE_ENABLED=true` after applying its migrations; the device library and core Auth/Postgres work with it disabled.
+
 ## Vision
 
 Design set pieces, workstations, and equipment layouts for fabrication shops, manufacturing spaces, and laboratories. Build hardware projects with Forma, import existing Forma projects or plain STEP files, place them in a 3D room, and animate how the space works.
