@@ -11,6 +11,8 @@
 
 ## Shared instance model
 
+The automatic IndexedDB drafts from #39 are retained and upgraded: the complete scene manifest, animation, and active cloud revision are autosaved after 250 ms of inactivity. Drafts and their geometry are partitioned by user (or guest) to avoid restoring another account's workspace. Older #38/#39 guest scenes are migrated on load while preserving repeated geometry instances and their IDs. The legacy records are retained. A local draft is separate from an explicit cloud save.
+
 `Workspace` owns room dimensions, `SceneItem[]`, and an `Animation` document. Each item has a stable UUID, a reference to immutable imported geometry, a display name, base position/rotation, visibility, and optionally a cloud file-version ID. Repeated instances share source geometry but have independent identities and transforms. All import/library/cloud entry points use the same placement function; new assets are placed to the right of existing bounds with a gap.
 
 The viewport and GIF renderer both use `evaluateWorkspace` and `applyWorldPoses`. Renderers never mutate imported Forma data. The viewport keeps its renderer/camera alive while transforms or timeline time change; ordinary edits do not repeatedly recreate WebGL contexts or reset camera navigation.

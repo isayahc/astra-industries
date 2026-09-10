@@ -14,6 +14,8 @@ import { WorkspaceViewer } from './components/workspace-viewer';
 import { Timeline } from './components/timeline';
 import { SceneControls } from './components/scene-controls';
 import { ProjectInspector } from './components/project-inspector';
+import { loadWorkspaceDraft, saveWorkspaceDraft } from './lib/workspace-draft';
+import { supabase } from './lib/supabase';
 import './style.css';
 import './workspace.css';
 
@@ -25,7 +27,7 @@ function App(){
   const [selected,setSelected]=useState(-1);const[selectedPart,setSelectedPart]=useState(-1);const[focus,setFocus]=useState(0);
   const [time,setTime]=useState<number|null>(null);const[playing,setPlaying]=useState(false);
   const [currentScene,setCurrentScene]=useState<SavedScene|null>(null);
-  const [status,setStatus]=useState('Ready to import');const[error,setError]=useState('');const[busy,setBusy]=useState(false);
+  const [status,setStatus]=useState('Ready to import');const[error,setError]=useState('');const[busy,setBusy]=useState(true);
   const [prompt,setPrompt]=useState('A small 5V laboratory temperature monitor with a display');const[mode,setMode]=useState('simulation');
   const [model,setModel]=useState('');const[provider,setProvider]=useState('openai');
   const [upAxis,setUpAxis]=useState<'Z'|'Y'>('Z');const[scale,setScale]=useState(1);
@@ -34,22 +36,32 @@ function App(){
   const [captureOpen,setCaptureOpen]=useState(false);const[captureRegion,setCaptureRegion]=useState<FloorRegion|null>(null);
   const isFullscreen=fullscreen||expanded;const restoreAfterPicker=useRef(false);
   const owner=useUserId();const previousOwner=useRef<string|null>(null);
+  const[draftReady,setDraftReady]=useState(false);const draftOwner=useRef<string|null>(null);const draftEpoch=useRef(0);const[localSaved,setLocalSaved]=useState(false);
   function change(next:Workspace){setHistory(old=>({past:[...old.past,old.present].slice(-50),present:next,future:[]}));}
   function replace(next:Workspace){setPlaying(false);setTime(null);setSelected(-1);setSelectedPart(-1);setHistory({past:[],present:next,future:[]});setFocus(n=>n+1);}
   useEffect(()=>{
-    if(previousOwner.current&&previousOwner.current!==owner){replace(emptyWorkspace());setCurrentScene(null);setCaptureOpen(false);setStatus('Account changed; cloud workspace cleared.');}
+    if(previousOwner.current&&previousOwner.current!==owner){draftEpoch.current++;draftOwner.current=owner;replace(emptyWorkspace());setCurrentScene(null);setCaptureOpen(false);setStatus('Account changed; cloud workspace cleared.');}
     previousOwner.current=owner;
   },[owner]);
   useEffect(()=>{
-    let active=true;
-    void restoreAuthWorkspace().then(snapshot=>{
-      if(!snapshot||!active)return;
-      let restored=snapshot.workspace;
-      if(!restored){restored=appendAssets(emptyWorkspace(),snapshot.assets);restored.room=snapshot.room as Vec3;restored.items=restored.items.map((item,i)=>({...item,position:snapshot.positions?.[i]??item.position}));}
-      replace(restored);setSelected(snapshot.selected);setStatus('Restored workspace after sign-in');
-    }).catch(e=>{if(active)setError(e.message);});
+    let active=true;const epoch=draftEpoch.current;
+    void (async()=>{
+      const session=supabase?await supabase.auth.getSession():null;const id=session?.data.session?.user.id??null;
+      const snapshot=await restoreAuthWorkspace();
+      let restored=snapshot?.workspace;
+      if(snapshot&&!restored){restored=appendAssets(emptyWorkspace(),snapshot.assets);restored.room=snapshot.room as Vec3;restored.items=restored.items.map((item,i)=>({...item,position:snapshot.positions?.[i]??item.position}));}
+      const draft=restored?null:await loadWorkspaceDraft(id);
+      restored??=draft?.workspace;
+      if(!active||epoch!==draftEpoch.current)return;draftOwner.current=id;
+      if(restored){replace(restored);setCurrentScene(draft?.scene??null);setSelected(snapshot?.selected??(restored.items.length?0:-1));setStatus(snapshot?'Restored workspace after sign-in':'Restored local draft');}
+    })().catch(e=>{if(active)setError(e.message);}).finally(()=>{if(active){setDraftReady(true);setBusy(false);}});
     return()=>{active=false;};
   },[]);
+  useEffect(()=>{
+    if(!draftReady||draftOwner.current!==owner)return;setLocalSaved(false);
+    const timer=setTimeout(()=>{void saveWorkspaceDraft(workspace,owner,currentScene).then(()=>setLocalSaved(true)).catch(e=>setError(e.message));},250);
+    return()=>clearTimeout(timer);
+  },[workspace,owner,draftReady,currentScene]);
   useEffect(()=>{
     if(!playing)return;let frame=0,last=performance.now();
     const tick=(now:number)=>{const dt=Math.min((now-last)/1000,.1);last=now;setTime(t=>{const next=(t??0)+dt;if(next>=workspace.animation.duration){if(workspace.animation.loop)return next%workspace.animation.duration;setPlaying(false);return workspace.animation.duration;}return next;});frame=requestAnimationFrame(tick);};
@@ -99,6 +111,7 @@ function App(){
   }
   const side=<aside id="workspace-panel" className={isFullscreen?'fullscreen-workspace':''} hidden={isFullscreen&&!workspaceVisible}>
     <div className="eyebrow">WORKSPACE</div><h1>Make room<br/>for your ideas.</h1><p>Import a Forma project, STEP model, or saved Astra scene. Arrange it, author motion, and save it across devices.</p>
+    <small role="status" aria-label="Local draft status">{localSaved?'Local draft saved':'Local draft changes pending'}</small>
     <div className="capture-actions"><button onClick={()=>document.querySelector('.timeline')?.scrollIntoView({block:'start'})}>Animate</button><button onClick={()=>document.querySelector('[aria-label="Scene persistence"]')?.scrollIntoView({block:'start'})}>Save / open scenes</button></div>
     <input ref={input} aria-label="Import files" type="file" accept=".json,.step,.stp" multiple hidden onChange={e=>{finishFilePicker();void load(Array.from(e.target.files??[]));e.target.value='';}}/>
     <button className="import" disabled={busy} onClick={openFilePicker}>↑ Drop files or browse<br/><small>FORMA JSON · STEP · ASTRA SCENE</small></button>

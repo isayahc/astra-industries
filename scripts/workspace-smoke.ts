@@ -24,7 +24,7 @@ async function newPage(session:Session){
   const context=await browser.newContext({viewport:{width:1440,height:1000}});
   await context.addInitScript(({session,key})=>localStorage.setItem(key,JSON.stringify(session)),{session,key:`sb-${new URL(url).hostname.split('.')[0]}-auth-token`});
   const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));await page.goto(process.env.ASTRA_BASE_URL||'http://127.0.0.1:8787');
-  await expect(page.getByRole('button',{name:'Sign out',exact:true})).toBeVisible();return{page,context};
+  await expect(page.getByRole('button',{name:'Sign out',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'+ Import project'})).toBeEnabled();return{page,context};
 }
 async function downloaded(page:Page,action:()=>Promise<unknown>){const event=page.waitForEvent('download');await action();const file=await event;const stream=await file.createReadStream();const chunks:Buffer[]=[];for await(const chunk of stream!)chunks.push(chunk as Buffer);return Buffer.concat(chunks);}
 async function waitSave(page:Page,text:string){const panel=page.getByRole('region',{name:'Scene persistence'});await expect.poll(async()=>{if(await panel.getByRole('alert').count())throw new Error(await panel.getByRole('alert').innerText());return panel.getByRole('status').innerText();},{timeout:120000}).toContain(text);}
@@ -72,6 +72,11 @@ try{
   await page.getByRole('button',{name:'Save cloud scene',exact:true}).click();await waitSave(page,'Scene saved to Postgres');
   const repo=new SceneRepository(a.client,a.id,true);const scenes=await repo.list();assert.equal(scenes.length,1);const saved=scenes[0];assert.equal(saved.revision,1);
   await expect(page.getByRole('region',{name:'Scene persistence'})).toContainText('Cloud revision 1 · Saved');
+  await expect(page.getByRole('status',{name:'Local draft status'})).toHaveText('Local draft saved');
+  await page.reload();await expect(page.getByRole('region',{name:'Scene persistence'})).toContainText('Cloud revision 1 · Saved');
+  const state=await first.context.storageState({indexedDB:true});
+  for(const origin of state.origins)for(const item of origin.localStorage)if(item.name===`sb-${new URL(url).hostname.split('.')[0]}-auth-token`)item.value=JSON.stringify(b.session);
+  const switchedContext=await browser.newContext({storageState:state});const switched=await switchedContext.newPage();await switched.goto(process.env.ASTRA_BASE_URL||'http://127.0.0.1:8787');await expect(switched.getByRole('button',{name:'+ Import project'})).toBeEnabled();await expect(switched.locator('.asset')).toHaveCount(0);await switchedContext.close();
   const versions=await new CloudStorage(a.client,a.id).list();assert.equal(versions.length,1);
   await assert.rejects(()=>new CloudStorage(a.client,a.id).remove(versions[0]),/referenced/);
   const second=await newPage(a.session!);
