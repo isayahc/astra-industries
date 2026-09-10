@@ -59,7 +59,7 @@ export function readFormaDocument(input: unknown, filename: string): FormaDocume
   }
   const metadata = record(ir.assembly_metadata);
   const overview = record(ir.overview);
-  const project: FormaProject = { projectId: projectId || undefined, revision: version, hardwareIrVersion: version.split(' / ')[0], ir, source };
+  const project: FormaProject = { projectId: projectId || undefined, revision: version, agent: text(root.agent ?? ir.agent) || undefined, hardwareIrVersion: version.split(' / ')[0], ir, source };
   return {
     name: text(root.title, text(overview.title, filename.replace(/\.json$/i, ''))),
     projectId: projectId || text(metadata.project_id) || undefined,
