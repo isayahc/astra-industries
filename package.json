@@ -12,6 +12,7 @@
     "test:e2e": "node scripts/smoke.mjs",
     "test:cad": "tsx scripts/cad-import-test.ts",
     "test:scene": "tsx scripts/scene-manifest-test.ts",
+    "test:draft-recovery": "node scripts/draft-recovery-smoke.mjs",
     "test:gif": "node scripts/gif-smoke.mjs",
     "test:auth": "node scripts/auth-smoke.mjs",
     "test:storage": "tsx scripts/cloud-storage-smoke.ts",

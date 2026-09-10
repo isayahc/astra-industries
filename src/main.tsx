@@ -14,7 +14,7 @@ import { WorkspaceViewer } from './components/workspace-viewer';
 import { Timeline } from './components/timeline';
 import { SceneControls } from './components/scene-controls';
 import { ProjectInspector } from './components/project-inspector';
-import { loadWorkspaceDraft, saveWorkspaceDraft } from './lib/workspace-draft';
+import { backupDraft, loadWorkspaceDraft, replaceDraftWithBackup, saveWorkspaceDraft } from './lib/workspace-draft';
 import { supabase } from './lib/supabase';
 import './style.css';
 import './workspace.css';
@@ -37,6 +37,7 @@ function App(){
   const isFullscreen=fullscreen||expanded;const restoreAfterPicker=useRef(false);
   const owner=useUserId();const previousOwner=useRef<string|null>(null);
   const[draftReady,setDraftReady]=useState(false);const draftOwner=useRef<string|null>(null);const draftEpoch=useRef(0);const[localSaved,setLocalSaved]=useState(false);
+  const [draftRecovery,setDraftRecovery]=useState<{scope:string;message:string}|null>(null);
   function change(next:Workspace){setHistory(old=>({past:[...old.past,old.present].slice(-50),present:next,future:[]}));}
   function replace(next:Workspace){setPlaying(false);setTime(null);setSelected(-1);setSelectedPart(-1);setHistory({past:[],present:next,future:[]});setFocus(n=>n+1);}
   useEffect(()=>{
@@ -44,9 +45,11 @@ function App(){
     previousOwner.current=owner;
   },[owner]);
   useEffect(()=>{
-    let active=true;const epoch=draftEpoch.current;
+    let active=true;const epoch=draftEpoch.current;let requestedScope='guest';
+    const fallback=window.setTimeout(()=>{if(active){setDraftReady(true);setBusy(false);setDraftRecovery({scope:requestedScope,message:'Saved workspace loading exceeded 12 seconds. Retry or recover it without discarding the stored data.'});setError('Saved workspace loading timed out.');}},12000);
     void (async()=>{
       const session=supabase?await supabase.auth.getSession():null;const id=session?.data.session?.user.id??null;
+      requestedScope=id??'guest';
       const snapshot=await restoreAuthWorkspace();
       let restored=snapshot?.workspace;
       if(snapshot&&!restored){restored=appendAssets(emptyWorkspace(),snapshot.assets);restored.room=snapshot.room as Vec3;restored.items=restored.items.map((item,i)=>({...item,position:snapshot.positions?.[i]??item.position}));}
@@ -54,8 +57,8 @@ function App(){
       restored??=draft?.workspace;
       if(!active||epoch!==draftEpoch.current)return;draftOwner.current=id;
       if(restored){replace(restored);setCurrentScene(draft?.scene??null);setSelected(snapshot?.selected??(restored.items.length?0:-1));setStatus(snapshot?'Restored workspace after sign-in':'Restored local draft');}
-    })().catch(e=>{if(active)setError(e.message);}).finally(()=>{if(active){setDraftReady(true);setBusy(false);}});
-    return()=>{active=false;};
+    })().catch(e=>{if(active){draftOwner.current=requestedScope==='guest'?null:requestedScope;setDraftRecovery({scope:requestedScope,message:e instanceof Error?e.message:'The saved workspace could not be opened.'});setError('Your saved local workspace is invalid. Recover it below or start a clean workspace.');}}).finally(()=>{clearTimeout(fallback);if(active){setDraftReady(true);setBusy(false);}});
+    return()=>{active=false;clearTimeout(fallback);};
   },[]);
   useEffect(()=>{
     if(!draftReady||draftOwner.current!==owner)return;setLocalSaved(false);
@@ -109,6 +112,18 @@ function App(){
   function exportScene(){
     const blob=new Blob([JSON.stringify(makeManifest(workspace,true))],{type:'application/json'});const url=URL.createObjectURL(blob);const link=document.createElement('a');link.href=url;link.download='astra-scene.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
   }
+  async function exportCorruptDraft(){
+    if(!draftRecovery)return;
+    try{const backup=await backupDraft(draftRecovery.scope);const blob=new Blob([JSON.stringify(backup,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const link=document.createElement('a');link.href=url;link.download='astra-draft-recovery.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);setStatus('Recovery backup downloaded.');}
+    catch(e){setError((e as Error).message);}
+  }
+  async function resetCorruptDraft(){
+    if(!draftRecovery)return;
+    setBusy(true);
+    try{const clean=emptyWorkspace();await replaceDraftWithBackup(clean,draftOwner.current,draftRecovery.scope,null);setDraftRecovery(null);setError('');replace(clean);setStatus('A clean workspace was created. The corrupt draft was backed up locally.');}
+    catch(e){setError((e as Error).message);}
+    finally{setBusy(false);}
+  }
   const side=<aside id="workspace-panel" className={isFullscreen?'fullscreen-workspace':''} hidden={isFullscreen&&!workspaceVisible}>
     <div className="eyebrow">WORKSPACE</div><h1>Make room<br/>for your ideas.</h1><p>Import a Forma project, STEP model, or saved Astra scene. Arrange it, author motion, and save it across devices.</p>
     <small role="status" aria-label="Local draft status">{localSaved?'Local draft saved':'Local draft changes pending'}</small>
@@ -138,6 +153,7 @@ function App(){
       </div>
       <aside className="inspector"><div className="eyebrow">INSPECTOR</div><ProjectInspector item={workspace.items[selected]} selectedPart={selectedPart} selectPart={index=>{setSelectedPart(index);setFocus(n=>n+1);}}/></aside>
     </main><footer><span role="status">{busy?'◌ ':'● '}{status}</span><span>FORMA POWERED · LOCAL + CLOUD</span></footer>
+    {draftRecovery&&(isFullscreen&&stage.current?createPortal(<div className="draft-recovery" role="alert"><b>Saved workspace needs recovery</b><p>{draftRecovery.message}</p><div className="capture-actions"><button disabled={busy} onClick={()=>{setDraftRecovery(null);setError('');setDraftReady(false);window.location.reload();}}>Retry loading</button><button disabled={busy} onClick={()=>void exportCorruptDraft()}>Download backup</button><button disabled={busy} onClick={()=>void resetCorruptDraft()}>Start clean workspace</button></div></div>,stage.current):<div className="draft-recovery" role="alert"><b>Saved workspace needs recovery</b><p>{draftRecovery.message}</p><div className="capture-actions"><button disabled={busy} onClick={()=>{setDraftRecovery(null);setError('');setDraftReady(false);window.location.reload();}}>Retry loading</button><button disabled={busy} onClick={()=>void exportCorruptDraft()}>Download backup</button><button disabled={busy} onClick={()=>void resetCorruptDraft()}>Start clean workspace</button></div></div>)}
     {error&&(isFullscreen&&stage.current?createPortal(<div className="error" role="alert">{error}<button aria-label="Dismiss error" onClick={()=>setError('')}>×</button></div>,stage.current):<div className="error" role="alert">{error}<button aria-label="Dismiss error" onClick={()=>setError('')}>×</button></div>)}
   </>;
 }
