@@ -9,10 +9,13 @@
     "build": "tsc --noEmit && vite build",
     "start": "node --env-file-if-exists=.env server/index.mjs",
     "test": "node scripts/smoke.mjs",
-    "test:e2e": "node scripts/smoke.mjs"
+    "test:e2e": "node scripts/smoke.mjs",
+    "test:gif": "node scripts/gif-smoke.mjs",
+    "test:fullscreen": "node scripts/fullscreen-smoke.mjs && node scripts/fullscreen-import-smoke.mjs"
   },
   "dependencies": {
     "express": "^5.1.0",
+    "gifenc": "^1.0.3",
     "lucide-react": "^0.468.0",
     "occt-import-js": "0.0.23",
     "react": "^19.0.0",
@@ -27,6 +30,7 @@
     "@types/three": "^0.180.0",
     "@vitejs/plugin-react": "^4.7.0",
     "concurrently": "^9.2.0",
+    "omggif": "^1.0.10",
     "tsx": "^4.20.0",
     "typescript": "^5.9.0",
     "vite": "^6.4.1"

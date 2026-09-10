@@ -66,3 +66,32 @@ With `npm start` running, run `npm test`. The Chrome smoke test checks Forma imp
 ## Third-party software
 
 Forma Core is consumed as a pip dependency under MPL-2.0. STEP conversion uses occt-import-js and its OpenCascade/WebAssembly distribution; retain their bundled license notices when redistributing. Upstream test geometry used by the smoke test is fetched from the occt-import-js test suite rather than included in this repository.
+
+## GIF studio and asset library
+
+Open **GIF studio** in the viewer (also available in fullscreen). Everything in this workflow runs in the browser; no Forma process, provider credentials, upload service, or server-side rendering is required.
+
+### Export for visual review
+
+1. Import your Forma/STEP assets and open **Floor export**.
+2. Choose **Entire room**, **Floor section**, or **Selected asset**. A section is defined by its X/Z center and width/depth in meters, relative to the room center. Its box is highlighted in the viewport. It must fit within the room and intersect an asset; geometry outside its six boundaries is clipped in the export.
+3. Choose 320, 480, or 640 pixels square, a 2–4 second duration, and 10 or 15 fps. Click **Render GIF**; progress and cancellation are available.
+4. Inspect the animated preview, then download the GIF and its review metadata JSON. Metadata records source asset IDs, names, provenance, instance positions, units, room/section dimensions, motion mode, frame timing, and geometry approximation warnings. Supply both files to a visual-review agent to preserve spatial context. Astra does not automatically call an LLM or apply corrections.
+
+**Turntable** makes one complete camera orbit around fixed geometry. Selected assets can also use **Sample lift-and-return**, a clearly labeled synthetic motion with a stationary camera. It is a preview preset, not an authored animation timeline or physics simulation. Captures use a separate renderer and never modify the active room or camera.
+
+GIF timing is rounded to the format's 10 ms tick: 15 fps becomes 70 ms/frame. Metadata and preview report the actual duration. At most 60 frames are encoded; frames are processed sequentially with UI yields, and temporary render resources are disposed on completion, failure, or cancellation. GIFs use a 256-color palette per frame, so some color quantization is expected.
+
+### Build a reusable asset library
+
+1. Select a room asset, open **Asset library**, and click **Save selected asset to library**.
+2. Render a **turntable** or **sample motion** preview from its card. The latest GIF and review metadata are saved with its geometry in IndexedDB. Saving the same asset ID updates its existing entry.
+3. Refresh or reopen Astra on the same browser origin: library entries and previews remain. **Add to room** restores an instance without reimporting the source file. **Remove from library** deletes the stored asset and preview while leaving existing room instances intact.
+
+Library storage is per browser/device/origin, subject to browser quota and eviction, and not cloud synced. Clearing site data removes it. Download previews you want to keep. The room itself still resets on reload; scene persistence remains a separate feature.
+
+### GIF checks
+
+With the app running on port 8787, run `npm run test:gif`. It imports deterministic fixtures, renders and decodes real GIF downloads to check dimensions, moving frames, timing and looping, verifies section filtering/metadata, tests library persistence and both motion presets, and covers cancellation, fullscreen, and mobile layout. No Forma installation or external fixture download is needed for this suite. Run `npm run test:fullscreen` for the existing fullscreen regressions. Screenshots are saved under `test-results/10-*.png`.
+
+GIF encoding uses `gifenc` (MIT); the test-only GIF decoder is `omggif` (MIT).
