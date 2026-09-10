@@ -72,6 +72,30 @@ function App() {
   const [provider, setProvider] = useState('openai');
   const [upAxis, setUpAxis] = useState<'Z' | 'Y'>('Z');
   const [scale, setScale] = useState(1);
+  const stage = useRef<HTMLDivElement>(null);
+  const [fullscreen, setFullscreen] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  useEffect(() => {
+    const sync = () => setFullscreen(document.fullscreenElement === stage.current);
+    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') setExpanded(false); };
+    document.addEventListener('fullscreenchange', sync);
+    document.addEventListener('keydown', escape);
+    return () => { document.removeEventListener('fullscreenchange', sync); document.removeEventListener('keydown', escape); };
+  }, []);
+  useEffect(() => {
+    if (!expanded) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = previous; };
+  }, [expanded]);
+  async function toggleFullscreen() {
+    if (expanded) { setExpanded(false); return; }
+    if (document.fullscreenElement === stage.current) { await document.exitFullscreen(); return; }
+    try {
+      if (!stage.current?.requestFullscreen) throw new Error('Fullscreen unavailable');
+      await stage.current.requestFullscreen();
+    } catch { setExpanded(true); }
+  }
   const input = useRef<HTMLInputElement>(null);
   async function load(files: File[]) {
     if (busy) return;
@@ -110,7 +134,7 @@ function App() {
         <section><div className="eyebrow">ROOM / METERS</div><div className="dimensions">{['Width', 'Depth', 'Height'].map((name, i) => <label key={name}>{name}<input aria-label={name} type="number" min="1" max="100" step=".5" value={room[i]} onChange={e => { const n = Number(e.target.value); if (n >= 1 && n <= 100) setRoom(old => old.map((v, j) => i === j ? n : v)); }} /></label>)}</div><button onClick={() => setSelected(-1)}>View entire room</button></section>
         <section><div className="eyebrow">SCENE COLLECTION <span>{assets.length}</span></div>{!assets.length && <p>Your room is a blank canvas.</p>}{assets.map((a, i) => <button className={`asset ${i === selected ? 'active' : ''}`} key={`${a.id}-${i}`} onClick={() => setSelected(i)}><span>◇ {a.name}</span><small>{a.source.kind.toUpperCase()} · {a.parts.length} parts</small></button>)}</section>
         <details><summary>Build with Forma</summary><textarea aria-label="Project description" value={prompt} onChange={e => setPrompt(e.target.value)} /><label>Generation mode<select value={mode} onChange={e => setMode(e.target.value)}><option value="simulation">Deterministic demo</option><option value="live">Live generation</option></select></label>{mode === 'live' && <><label>Provider<input value={provider} onChange={e => setProvider(e.target.value)} /></label><label>Model<input value={model} onChange={e => setModel(e.target.value)} /></label><p>Set provider credentials in the server’s .env file.</p></>}<button disabled={busy} onClick={() => void generate()}>Build and import →</button></details>
-      </aside><div className="stage"><div className="stage-label"><span className="dot" /> PERSPECTIVE VIEW <span>1:1 / METERS</span></div><Viewer assets={assets} room={room} selected={selected} /><div className="hint">Drag to orbit · Right-drag to pan · Scroll to zoom · Select an asset to frame</div></div>
+      </aside><div ref={stage} className={`stage${expanded ? ' stage-expanded' : ''}`}><div className="stage-label"><span className="dot" /> PERSPECTIVE VIEW <span>1:1 / METERS</span></div><button className="fullscreen-toggle" aria-label={fullscreen || expanded ? 'Exit fullscreen' : 'Enter fullscreen'} aria-pressed={fullscreen || expanded} title={fullscreen || expanded ? 'Exit fullscreen (Esc)' : 'Expand 3D viewer'} onClick={() => void toggleFullscreen()}>{fullscreen || expanded ? '↙ Exit fullscreen' : '⛶ Fullscreen'}</button><Viewer assets={assets} room={room} selected={selected} /><div className="hint">Drag to orbit · Right-drag to pan · Scroll to zoom · Select an asset to frame</div></div>
       <aside className="inspector"><div className="eyebrow">INSPECTOR</div>{asset ? <><h2>{asset.name}</h2><span className="badge">{asset.source.kind.toUpperCase()}</span><h3>Dimensions</h3><p>{asset.dimensions.map(n => n.toFixed(3)).join(' × ')} m<br /><small>Width × height × depth</small></p><h3>Source</h3><p className="wrap">{asset.source.filename}<br />{asset.source.version && `Version ${asset.source.version}`}</p>{asset.warnings.map(w => <p className="notice" key={w}>{w}</p>)}<h3>Parts</h3>{asset.parts.map(part => <details key={part.id}><summary>{part.name}</summary>{Object.entries(part.metadata).filter(([, v]) => v).map(([key, value]) => <p key={key}><b>{key}</b>: {value}</p>)}</details>)}</> : <><h2>A space for<br />what’s next.</h2><p>Select an imported asset to inspect its dimensions, parts, and source.</p><div className="room-stat">{room[0] * room[1]}<small>m² floor area</small></div></>}</aside>
     </main><footer><span role="status">{busy ? '◌ ' : '● '}{status}</span><span>FORMA POWERED · LOCAL FIRST</span></footer>{error && <div className="error" role="alert">{error}<button aria-label="Dismiss error" onClick={() => setError('')}>×</button></div>}</>;
 }
