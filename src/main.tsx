@@ -10,6 +10,8 @@ import { regionBounds, type FloorRegion } from './lib/gif';
 import { CaptureTools } from './components/capture-tools';
 import { AuthControls } from './components/auth-controls';
 import { preserveAuthWorkspace, restoreAuthWorkspace } from './lib/auth-workspace';
+import { loadScene, saveScene } from './lib/scene-storage';
+import { migratePositions } from './lib/scene-manifest';
 import './style.css';
 
 const importer = new ImportService();
@@ -78,6 +80,8 @@ function App() {
   const [selected, setSelected] = useState(-1);
   const [selectedPart, setSelectedPart] = useState(-1);
   const [positions, setPositions] = useState<Vec3[]>([]);
+  const [sceneId, setSceneId] = useState('active-scene');
+  const sceneHydrated = useRef(false);
   const [status, setStatus] = useState('Ready to import');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -92,6 +96,31 @@ function App() {
     }).catch(e => { if (active) setError((e as Error).message); });
     return () => { active = false; };
   }, []);
+  useEffect(() => {
+    let active = true;
+    void loadScene().then(stored => {
+      if (!active || !stored) { if (active) sceneHydrated.current = true; return; }
+      const missing = new Set(stored.missingAssetIds);
+      const usableInstances = stored.scene.instances.filter(instance => !missing.has(instance.assetId));
+      const assets = stored.assets.filter(asset => usableInstances.some(instance => instance.assetId === asset.id));
+      setAssets(assets);
+      setRoom([stored.scene.room.width, stored.scene.room.depth, stored.scene.room.height]);
+      setPositions(usableInstances.map(instance => instance.position));
+      setSelected(usableInstances.length ? 0 : -1);
+      setSceneId(stored.scene.id);
+      setStatus(missing.size ? `Restored scene with ${missing.size} missing asset(s)` : 'Restored saved scene');
+      sceneHydrated.current = true;
+    }).catch(error => { if (active) { setError((error as Error).message); sceneHydrated.current = true; } });
+    return () => { active = false; };
+  }, []);
+  useEffect(() => {
+    if (!sceneHydrated.current) return;
+    const timer = window.setTimeout(() => {
+      try { const scene = migratePositions(assets, room, positions, sceneId); void saveScene(scene, assets).catch(error => setError((error as Error).message)); }
+      catch (error) { setError((error as Error).message); }
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [assets, room, positions, sceneId]);
   const [prompt, setPrompt] = useState('A small 5V laboratory temperature monitor with a display');
   const [mode, setMode] = useState('simulation');
   const [model, setModel] = useState('');
