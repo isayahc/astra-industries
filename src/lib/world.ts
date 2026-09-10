@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { Asset } from './scene';
 
 /** The same geometry, materials and instance placement feed the viewport and GIFs. */
-export function createWorld(assets: Asset[], room: number[], selected = -1, positions: Array<[number, number, number]> = []) {
+export function createWorld(assets: Asset[], room: number[], selected = -1, selectedPart = -1, positions: Array<[number, number, number]> = []) {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color('#192322');
   scene.add(new THREE.HemisphereLight(0xffffff, 0x63736b, 3));
@@ -23,7 +23,7 @@ export function createWorld(assets: Asset[], room: number[], selected = -1, posi
       geometry.setAttribute('position', new THREE.Float32BufferAttribute(part.vertices, 3));
       geometry.setIndex(part.indices); geometry.computeVertexNormals();
       const material = new THREE.MeshStandardMaterial({
-        color: part.color ? new THREE.Color(...part.color) : index === selected ? '#c8ef82' : '#b9c9c5',
+         color: part.color ? new THREE.Color(...part.color) : index === selected && assets[index].parts.indexOf(part) === selectedPart ? '#e8ffb5' : index === selected ? '#c8ef82' : '#b9c9c5',
         metalness: .2, roughness: .55,
       });
       group.add(new THREE.Mesh(geometry, material));
