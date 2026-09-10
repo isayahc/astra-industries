@@ -61,10 +61,14 @@ function App(){
       const snapshot=await restoreAuthWorkspace();
       let restored=snapshot?.workspace;
       if(snapshot&&!restored){restored=appendAssets(emptyWorkspace(),snapshot.assets);restored.room=snapshot.room as Vec3;restored.items=restored.items.map((item,i)=>({...item,position:snapshot.positions?.[i]??item.position}));}
-      const draft=restored?null:await loadWorkspaceDraft(id);
-      restored??=draft?.workspace;
-      if(!active||epoch!==draftEpoch.current)return;draftOwner.current=id;
-      if(restored){replace(restored);setCurrentScene(draft?.scene??null);setRoomId(draft?.roomId??'local');setSelected(snapshot?.selected??(restored.items.length?0:-1));setStatus(snapshot?'Restored workspace after sign-in':'Restored local draft');}
+       const draft=restored?null:await loadWorkspaceDraft(id);
+       restored??=draft?.workspace;
+       if(!restored){
+         const response=await fetch('/default-room.json');
+         if(response.ok)restored=hydrateManifest(readManifest(await response.json()),[]);
+       }
+       if(!active||epoch!==draftEpoch.current)return;draftOwner.current=id;
+       if(restored){replace(restored);setCurrentScene(draft?.scene??null);setRoomId(draft?.roomId??'default-machine-room');setSelected(snapshot?.selected??(restored.items.length?0:-1));setStatus(snapshot?'Restored workspace after sign-in':draft?'Restored local draft':'Loaded default machine interface room');}
     })().catch(e=>{if(active){draftOwner.current=requestedScope==='guest'?null:requestedScope;setDraftRecovery({scope:requestedScope,message:e instanceof Error?e.message:'The saved workspace could not be opened.'});setError('Your saved local workspace is invalid. Recover it below or start a clean workspace.');}}).finally(()=>{clearTimeout(fallback);if(active){setDraftReady(true);setBusy(false);}});
     return()=>{active=false;clearTimeout(fallback);};
   },[]);
