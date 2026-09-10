@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Asset } from '../lib/scene';
 import { renderGif, type FloorRegion, type GifOptions, type GifResult } from '../lib/gif';
 import { deleteLibrary, listLibrary, saveLibrary, type LibraryEntry } from '../lib/library';
+import { CloudLibrary } from './cloud-library';
 import './capture-tools.css';
 
 function useBlobUrl(blob?: Blob) {
@@ -123,6 +124,7 @@ export function CaptureTools({ open, assets, room, selected, close, addAsset, on
       <p>{assets[selected] ? `Selected: ${assets[selected].name}` : 'Select a room asset to save it.'}</p>
       {!entries.length && <p>Your library is empty. Import an object, select it, and save it here.</p>}
       {entries.map(entry => <LibraryCard key={entry.id} entry={entry} disabled={busy} render={preset => void capture(entry, preset)} add={() => { addAsset(entry.asset); setMessage(`Added ${entry.asset.name} to the room.`); }} remove={() => void remove(entry)} />)}
+      <CloudLibrary entries={entries} addAsset={addAsset} />
     </>}
     {busy && controller.current && <div className="capture-progress"><progress aria-label="GIF export progress" value={progress} max={1} /><button onClick={() => controller.current?.abort()}>Cancel export</button></div>}
     <p role="status" aria-label="GIF export status">{message}</p>

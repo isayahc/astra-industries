@@ -25,7 +25,7 @@ The CLI is pinned as a development dependency. Local link details and database c
 - Ownership references `auth.users`. Authenticated clients can create/read/update/delete only their own rows. Anonymous database access is revoked; timestamps are maintained by triggers.
 - The ownership test exercises two transaction-local users and database roles, checks cross-user isolation and owner CRUD, then rolls back everything. It does not test an end-to-end Auth signup/login flow.
 
-Postgres and Auth are core (#12). S3-compatible object storage is a separate feature (#13); no buckets are created, and the local Storage services are disabled. The full local `config.toml` has not been pushed to the hosted Auth service. Only the Site URL and local redirect allowlist from `hosted-auth/supabase/config.toml` have been applied.
+Postgres and Auth are core (#12). S3-compatible object storage is a separate feature (#13); its migrations provision the private `astra-assets` bucket and file-version/reference tables. The local Storage services remain disabled by default. See [cloud storage](../docs/cloud-storage.md) for independent enablement, policies, and lifecycle tests. The full local `config.toml` has not been pushed to the hosted Auth service. Only the Site URL and redirect allowlist from `hosted-auth/supabase/config.toml` have been applied.
 
 The app currently continues to use its existing IndexedDB library. GitHub Auth/session controls are implemented; cloud save/load adapters remain to be implemented under #12. Database tables and sign-in alone do not enable cloud persistence. Binary CAD/geometry and GIF previews belong to #13 rather than these metadata tables.
 
