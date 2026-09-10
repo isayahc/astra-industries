@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { Asset } from './scene';
 
 /** The same geometry, materials and instance placement feed the viewport and GIFs. */
-export function createWorld(assets: Asset[], room: number[], selected = -1) {
+export function createWorld(assets: Asset[], room: number[], selected = -1, positions: Array<[number, number, number]> = []) {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color('#192322');
   scene.add(new THREE.HemisphereLight(0xffffff, 0x63736b, 3));
@@ -16,7 +16,6 @@ export function createWorld(assets: Asset[], room: number[], selected = -1) {
   const edges = new THREE.LineSegments(new THREE.EdgesGeometry(box), new THREE.LineBasicMaterial({ color: 0x7e9784, transparent: true, opacity: .35 }));
   box.dispose(); edges.position.y = room[2] / 2; environment.add(edges);
   scene.add(environment);
-  let offset = 0;
   const groups = assets.map((asset, index) => {
     const group = new THREE.Group();
     asset.parts.forEach(part => {
@@ -29,8 +28,8 @@ export function createWorld(assets: Asset[], room: number[], selected = -1) {
       });
       group.add(new THREE.Mesh(geometry, material));
     });
-    group.position.x = offset;
-    offset += asset.dimensions[0] + .25;
+    const position = positions[index] || [index * (asset.dimensions[0] + .25), 0, 0];
+    group.position.set(position[0], position[1], position[2]);
     scene.add(group);
     return group;
   });

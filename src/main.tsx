@@ -4,19 +4,19 @@ import { createPortal, flushSync } from 'react-dom';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { ImportService } from './lib/imports';
-import type { Asset } from './lib/scene';
+import type { Asset, Vec3 } from './lib/scene';
 import { createWorld } from './lib/world';
 import { regionBounds, type FloorRegion } from './lib/gif';
 import { CaptureTools } from './components/capture-tools';
 import './style.css';
 
 const importer = new ImportService();
-function Viewer({ assets, room, selected, region }: { assets: Asset[]; room: number[]; selected: number; region: FloorRegion | null }) {
+function Viewer({ assets, room, selected, positions, region }: { assets: Asset[]; room: number[]; selected: number; positions: Vec3[]; region: FloorRegion | null }) {
   const host = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   useEffect(() => {
     const el = host.current!;
-    const world = createWorld(assets, room, selected);
+     const world = createWorld(assets, room, selected, positions);
     const { scene, groups } = world;
     sceneRef.current = scene;
     const camera = new THREE.PerspectiveCamera(45, 1, 0.0001, 10000);
@@ -43,7 +43,7 @@ function Viewer({ assets, room, selected, region }: { assets: Asset[]; room: num
       world.dispose(); sceneRef.current = null;
       renderer.dispose(); el.removeChild(renderer.domElement);
     };
-  }, [assets, room, selected]);
+  }, [assets, room, selected, positions]);
   useEffect(() => {
     const scene = sceneRef.current;
     if (!region || !scene) return;
@@ -60,6 +60,7 @@ function App() {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [room, setRoom] = useState([6, 5, 3]);
   const [selected, setSelected] = useState(-1);
+  const [positions, setPositions] = useState<Vec3[]>([]);
   const [status, setStatus] = useState('Ready to import');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -127,7 +128,7 @@ function App() {
   async function load(files: File[]) {
     if (busy) return;
     setBusy(true); setError('');
-    try { const next = await importer.files(files, { upAxis, scale }, setStatus); setAssets(old => [...old, ...next]); setSelected(assets.length); setStatus(`Imported ${next.length} asset(s)`); }
+     try { const next = await importer.files(files, { upAxis, scale }, setStatus); setAssets(old => [...old, ...next]); setPositions(old => [...old, ...next.map((_, index) => [(assets.length + index) * 1.25, 0, 0] as Vec3)]); setSelected(assets.length); setStatus(`Imported ${next.length} asset(s)`); }
     catch (e) { setError((e as Error).message); setStatus('Import failed'); }
     finally { setBusy(false); }
   }
@@ -145,7 +146,7 @@ function App() {
         if (job.status === 'succeeded') {
           const file = new File([JSON.stringify(job.project)], 'forma-generated.json', { type: 'application/json' });
           const next = await importer.files([file], { upAxis: 'Z', scale: 1 }, setStatus);
-          setAssets(old => [...old, ...next]); setSelected(assets.length); setStatus(`Forma ${mode} project imported`); break;
+           setAssets(old => [...old, ...next]); setPositions(old => [...old, ...next.map((_, index) => [(assets.length + index) * 1.25, 0, 0] as Vec3)]); setSelected(assets.length); setStatus(`Forma ${mode} project imported`); break;
         }
       }
     } catch (e) { setError((e as Error).message); setStatus('Generation failed'); }
@@ -157,7 +158,8 @@ function App() {
         <button className="import" disabled={busy} onClick={openFilePicker}>↑ Drop files or browse<br /><small>FORMA JSON · STEP · STP</small></button>
         <details><summary>STEP import settings</summary><label>Source up axis<select value={upAxis} onChange={e => setUpAxis(e.target.value as 'Y' | 'Z')}><option>Z</option><option>Y</option></select></label><label>Scale correction<input type="number" min="0.000001" value={scale} onChange={e => setScale(Number(e.target.value))} /></label><p>STEP units are read automatically. Correction multiplies the physical size.</p></details>
         <section><div className="eyebrow">ROOM / METERS</div><div className="dimensions">{['Width', 'Depth', 'Height'].map((name, i) => <label key={name}>{name}<input aria-label={name} type="number" min="1" max="100" step=".5" value={room[i]} onChange={e => { const n = Number(e.target.value); if (n >= 1 && n <= 100) setRoom(old => old.map((v, j) => i === j ? n : v)); }} /></label>)}</div><button onClick={() => setSelected(-1)}>View entire room</button></section>
-        <section><div className="eyebrow">SCENE COLLECTION <span>{assets.length}</span></div>{!assets.length && <p>Your room is a blank canvas.</p>}{assets.map((a, i) => <button className={`asset ${i === selected ? 'active' : ''}`} key={`${a.id}-${i}`} onClick={() => setSelected(i)}><span>◇ {a.name}</span><small>{a.source.kind.toUpperCase()} · {a.parts.length} parts</small></button>)}</section>
+         <section><div className="eyebrow">SCENE COLLECTION <span>{assets.length}</span></div>{!assets.length && <p>Your room is a blank canvas.</p>}{assets.map((a, i) => <button className={`asset ${i === selected ? 'active' : ''}`} key={`${a.id}-${i}`} onClick={() => setSelected(i)}><span>◇ {a.name}</span><small>{a.source.kind.toUpperCase()} · {a.parts.length} parts</small></button>)}</section>
+         {assets.length > 0 && <section><div className="eyebrow">LAYOUT / METERS</div><p>Place each set piece using its floor position. Y raises an asset above the floor.</p>{assets.map((a, i) => <fieldset className="placement" key={`placement-${a.id}-${i}`}><legend>{a.name}</legend><div className="dimensions">{(['X', 'Y', 'Z'] as const).map((axis, axisIndex) => <label key={axis}>{axis}<input aria-label={`${a.name} ${axis} position`} type="number" step=".1" value={positions[i]?.[axisIndex] ?? 0} onChange={e => { const value = Number(e.target.value); if (!Number.isFinite(value)) return; setPositions(old => old.map((position, positionIndex) => positionIndex === i ? position.map((coordinate, coordinateIndex) => coordinateIndex === axisIndex ? value : coordinate) as Vec3 : position)); }} /></label>)}</div><button type="button" onClick={() => setPositions(old => old.map((position, positionIndex) => positionIndex === i ? [i * (a.dimensions[0] + .25), 0, 0] : position))}>Reset position</button></fieldset>)}</section>}
         <details><summary>Build with Forma</summary><textarea aria-label="Project description" value={prompt} onChange={e => setPrompt(e.target.value)} /><label>Generation mode<select value={mode} onChange={e => setMode(e.target.value)}><option value="simulation">Deterministic demo</option><option value="live">Live generation</option></select></label>{mode === 'live' && <><label>Provider<input value={provider} onChange={e => setProvider(e.target.value)} /></label><label>Model<input value={model} onChange={e => setModel(e.target.value)} /></label><p>Set provider credentials in the server’s .env file.</p></>}<button disabled={busy} onClick={() => void generate()}>Build and import →</button></details>
       </aside>;
   return <><header><div className="brand"><span className="logo">A</span> ASTRA <span className="muted">INDUSTRIES</span></div><span className="tag">SPATIAL WORKBENCH / 001</span><button disabled={busy} onClick={openFilePicker}>+ Import project</button></header>
@@ -168,7 +170,7 @@ function App() {
         {isFullscreen && <button className="workspace-toggle" aria-controls="workspace-panel" aria-expanded={workspaceVisible} onClick={() => setWorkspaceVisible(value => !value)}>{workspaceVisible ? 'Hide workspace' : 'Show workspace'}</button>}
         <button className="fullscreen-toggle" aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'} aria-pressed={isFullscreen} title={isFullscreen ? 'Exit fullscreen (Esc)' : 'Expand 3D viewer'} onClick={() => void toggleFullscreen()}>{isFullscreen ? '↙ Exit fullscreen' : '⛶ Fullscreen'}</button>
         <button className="capture-launch" aria-expanded={captureOpen} onClick={() => setCaptureOpen(value => !value)}>GIF studio</button>
-        <Viewer assets={assets} room={room} selected={selected} region={captureRegion} />
+         <Viewer assets={assets} room={room} selected={selected} positions={positions} region={captureRegion} />
         <CaptureTools open={captureOpen} assets={assets} room={room} selected={selected} close={() => setCaptureOpen(false)} onRegion={setCaptureRegion} addAsset={asset => { setAssets(old => [...old, asset]); setSelected(assets.length); setStatus(`Added ${asset.name} from library`); }} />
         <div className="hint">Drag to orbit · Right-drag to pan · Scroll to zoom · Select an asset to frame</div>
       </div>
