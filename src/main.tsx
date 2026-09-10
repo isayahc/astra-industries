@@ -30,6 +30,7 @@ function App(){
   const [selected,setSelected]=useState(-1);const[selectedPart,setSelectedPart]=useState(-1);const[focus,setFocus]=useState(0);
   const [time,setTime]=useState<number|null>(null);const[playing,setPlaying]=useState(false);
   const [currentScene,setCurrentScene]=useState<SavedScene|null>(null);
+  const [roomId,setRoomId]=useState('local');
   const [status,setStatus]=useState('Ready to import');const[error,setError]=useState('');const[busy,setBusy]=useState(true);
   const [prompt,setPrompt]=useState('A small 5V laboratory temperature monitor with a display');const[mode,setMode]=useState('simulation');
   const [model,setModel]=useState('');const[provider,setProvider]=useState('openai');
@@ -60,15 +61,15 @@ function App(){
       const draft=restored?null:await loadWorkspaceDraft(id);
       restored??=draft?.workspace;
       if(!active||epoch!==draftEpoch.current)return;draftOwner.current=id;
-      if(restored){replace(restored);setCurrentScene(draft?.scene??null);setSelected(snapshot?.selected??(restored.items.length?0:-1));setStatus(snapshot?'Restored workspace after sign-in':'Restored local draft');}
+      if(restored){replace(restored);setCurrentScene(draft?.scene??null);setRoomId(draft?.roomId??'local');setSelected(snapshot?.selected??(restored.items.length?0:-1));setStatus(snapshot?'Restored workspace after sign-in':'Restored local draft');}
     })().catch(e=>{if(active){draftOwner.current=requestedScope==='guest'?null:requestedScope;setDraftRecovery({scope:requestedScope,message:e instanceof Error?e.message:'The saved workspace could not be opened.'});setError('Your saved local workspace is invalid. Recover it below or start a clean workspace.');}}).finally(()=>{clearTimeout(fallback);if(active){setDraftReady(true);setBusy(false);}});
     return()=>{active=false;clearTimeout(fallback);};
   },[]);
   useEffect(()=>{
     if(!draftReady||draftOwner.current!==owner)return;setLocalSaved(false);
-    const timer=setTimeout(()=>{void saveWorkspaceDraft(workspace,owner,currentScene).then(()=>setLocalSaved(true)).catch(e=>setError(e.message));},250);
+    const timer=setTimeout(()=>{void saveWorkspaceDraft(workspace,owner,roomId,currentScene).then(()=>setLocalSaved(true)).catch(e=>setError(e.message));},250);
     return()=>clearTimeout(timer);
-  },[workspace,owner,draftReady,currentScene]);
+  },[workspace,owner,roomId,draftReady,currentScene]);
   useEffect(()=>{
     if(!playing)return;let frame=0,last=performance.now();
     const tick=(now:number)=>{const dt=Math.min((now-last)/1000,.1);last=now;setTime(t=>{const next=(t??0)+dt;if(next>=workspace.animation.duration){if(workspace.animation.loop)return next%workspace.animation.duration;setPlaying(false);return workspace.animation.duration;}return next;});frame=requestAnimationFrame(tick);};
@@ -138,7 +139,7 @@ function App(){
   async function resetCorruptDraft(){
     if(!draftRecovery)return;
     setBusy(true);
-    try{const clean=emptyWorkspace();await replaceDraftWithBackup(clean,draftOwner.current,draftRecovery.scope,null);setDraftRecovery(null);setError('');replace(clean);setStatus('A clean workspace was created. The corrupt draft was backed up locally.');}
+    try{const clean=emptyWorkspace();const newRoom=crypto.randomUUID();await replaceDraftWithBackup(clean,draftOwner.current,draftRecovery.scope,newRoom,null);setDraftRecovery(null);setError('');replace(clean);setRoomId(newRoom);setStatus('A clean workspace was created. The corrupt draft was backed up locally.');}
     catch(e){setError((e as Error).message);}
     finally{setBusy(false);}
   }
@@ -155,7 +156,7 @@ function App(){
     <div className="capture-actions"><button disabled={busy||!history.past.length} onClick={()=>{setPlaying(false);setTime(null);setHistory(old=>({past:old.past.slice(0,-1),present:old.past.at(-1)!,future:[old.present,...old.future]}));}}>Undo</button><button disabled={busy||!history.future.length} onClick={()=>{setPlaying(false);setTime(null);setHistory(old=>({past:[...old.past,old.present],present:old.future[0],future:old.future.slice(1)}));}}>Redo</button></div>
     {workspace.items.length>0&&<section><div className="eyebrow">LAYOUT / BASE TRANSFORMS</div>{workspace.items.map((item,i)=><fieldset className="placement" key={item.id}><legend>{item.name}</legend><label>Instance name<input aria-label={`${item.name} instance name`} maxLength={200} disabled={busy} value={item.name} onChange={e=>change({...workspace,items:workspace.items.map((v,j)=>i===j?{...v,name:e.target.value}:v)})}/></label>{(['position','rotation'] as const).map(kind=><div className="dimensions" key={kind}>{['X','Y','Z'].map((axis,index)=><label key={axis}>{axis}{kind==='rotation'?'°':''}<input aria-label={`${item.name} ${axis} ${kind}`} type="number" step={kind==='position'?'.1':'5'} disabled={busy} value={item[kind][index]} onChange={e=>{const n=Number(e.target.value);if(Number.isFinite(n)){setPlaying(false);setTime(null);change({...workspace,items:workspace.items.map((v,j)=>i===j?{...v,[kind]:v[kind].map((value,k)=>index===k?n:value) as Vec3}:v)});}}}/></label>)}</div>)}<label className="inline-check"><input type="checkbox" checked={item.visible} disabled={busy} onChange={e=>change({...workspace,items:workspace.items.map((v,j)=>i===j?{...v,visible:e.target.checked}:v)})}/> Visible</label><div className="capture-actions"><button disabled={busy} onClick={()=>change({...workspace,items:workspace.items.map((v,j)=>i===j?{...v,position:[0,0,0],rotation:[0,0,0]}:v)})}>Reset position</button><button disabled={busy} onClick={()=>change({...workspace,items:[...workspace.items,{...item,id:crypto.randomUUID(),name:`${item.name} copy`,position:[item.position[0]+item.asset.dimensions[0]+.25,item.position[1],item.position[2]]}]})}>Duplicate</button><button disabled={busy} onClick={()=>{change({...workspace,items:workspace.items.filter(v=>v.id!==item.id),animation:{...workspace.animation,tracks:workspace.animation.tracks.filter(t=>t.instanceId!==item.id)}});setSelected(-1);setSelectedPart(-1);}}>Delete instance</button></div></fieldset>)}</section>}
     <Timeline workspace={workspace} selected={selected} selectedPart={selectedPart} setPart={setSelectedPart} change={change} time={time} setTime={setTime} playing={playing} setPlaying={setPlaying} disabled={busy}/>
-    <SceneControls workspace={workspace} owner={owner} current={currentScene} setCurrent={setCurrentScene} replace={replace} busy={busy} setBusy={setBusy} onExport={exportScene}/>
+    <SceneControls workspace={workspace} owner={owner} roomId={roomId} setRoomId={setRoomId} current={currentScene} setCurrent={setCurrentScene} replace={replace} busy={busy} setBusy={setBusy} onExport={exportScene}/>
     {import.meta.env.VITE_FORMA_GENERATION_ENABLED!=='false'&&<details><summary>Build with Forma</summary><textarea aria-label="Project description" value={prompt} onChange={e=>setPrompt(e.target.value)}/><label>Generation mode<select value={mode} onChange={e=>setMode(e.target.value)}><option value="simulation">Deterministic demo</option><option value="live">Live generation</option></select></label>{mode==='live'&&<><label>Provider<input value={provider} onChange={e=>setProvider(e.target.value)}/></label><label>Model<input value={model} onChange={e=>setModel(e.target.value)}/></label></>}<button disabled={busy} onClick={()=>void generate()}>Build and import →</button></details>}
   </aside>;
   return <><header className="app-header"><div className="brand"><span className="logo">A</span> ASTRA <span className="muted">INDUSTRIES</span></div><span className="tag">SPATIAL WORKBENCH</span><AuthControls beforeSignIn={()=>preserveAuthWorkspace(assets,workspace.room,selected,workspace.items.map(i=>i.position),workspace)}/><button disabled={busy} onClick={openFilePicker}>+ Import project</button></header>

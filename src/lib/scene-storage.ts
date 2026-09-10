@@ -6,6 +6,7 @@ const DATABASE='astra-scenes';
 const VERSION=1;
 const TIMEOUT=8000;
 const sceneKey=(scope?:string)=>scope?`active:${scope}`:'active';
+const activeRoomKey=(scope:string)=>`active-room:${scope}`;
 const record=(value:unknown):value is Record<string,unknown>=>Boolean(value)&&typeof value==='object'&&!Array.isArray(value);
 
 export class DraftStorageError extends Error {
@@ -66,6 +67,13 @@ export async function saveScene(scene:AstraScene,assets:Asset[],scope?:string):P
     for(const asset of assets)tx.objectStore('assets').put(scope?{id:`${scope}:${asset.id}`,scope,asset}:asset);
     return()=>undefined;
   });
+}
+export async function loadActiveRoom(scope:string):Promise<string|undefined>{
+  return transact(scope,'readonly',tx=>{const request=tx.objectStore('scenes').get(activeRoomKey(scope));return()=>{const value=request.result;return record(value)&&typeof value.roomId==='string'&&value.roomId.length<=128?value.roomId:undefined;};});
+}
+export async function saveActiveRoom(scope:string,roomId:string):Promise<void>{
+  if(!scope||!roomId||roomId.length>128)throw new Error('Invalid active room identity.');
+  await transact(scope,'readwrite',tx=>{tx.objectStore('scenes').put({id:activeRoomKey(scope),kind:'astra.active-room',version:1,roomId,updatedAt:new Date().toISOString()});return()=>undefined;});
 }
 
 export async function loadScene(scope?:string):Promise<StoredScene|undefined>{
