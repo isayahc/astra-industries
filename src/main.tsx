@@ -8,6 +8,8 @@ import type { Asset } from './lib/scene';
 import { createWorld } from './lib/world';
 import { regionBounds, type FloorRegion } from './lib/gif';
 import { CaptureTools } from './components/capture-tools';
+import { AuthControls } from './components/auth-controls';
+import { preserveAuthWorkspace, restoreAuthWorkspace } from './lib/auth-workspace';
 import './style.css';
 
 const importer = new ImportService();
@@ -63,6 +65,16 @@ function App() {
   const [status, setStatus] = useState('Ready to import');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    let active = true;
+    void restoreAuthWorkspace().then(snapshot => {
+      if (snapshot && active) {
+        setAssets(snapshot.assets); setRoom(snapshot.room); setSelected(snapshot.selected);
+        setStatus('Restored workspace after sign-in');
+      }
+    }).catch(e => { if (active) setError((e as Error).message); });
+    return () => { active = false; };
+  }, []);
   const [prompt, setPrompt] = useState('A small 5V laboratory temperature monitor with a display');
   const [mode, setMode] = useState('simulation');
   const [model, setModel] = useState('');
@@ -158,9 +170,9 @@ function App() {
         <details><summary>STEP import settings</summary><label>Source up axis<select value={upAxis} onChange={e => setUpAxis(e.target.value as 'Y' | 'Z')}><option>Z</option><option>Y</option></select></label><label>Scale correction<input type="number" min="0.000001" value={scale} onChange={e => setScale(Number(e.target.value))} /></label><p>STEP units are read automatically. Correction multiplies the physical size.</p></details>
         <section><div className="eyebrow">ROOM / METERS</div><div className="dimensions">{['Width', 'Depth', 'Height'].map((name, i) => <label key={name}>{name}<input aria-label={name} type="number" min="1" max="100" step=".5" value={room[i]} onChange={e => { const n = Number(e.target.value); if (n >= 1 && n <= 100) setRoom(old => old.map((v, j) => i === j ? n : v)); }} /></label>)}</div><button onClick={() => setSelected(-1)}>View entire room</button></section>
         <section><div className="eyebrow">SCENE COLLECTION <span>{assets.length}</span></div>{!assets.length && <p>Your room is a blank canvas.</p>}{assets.map((a, i) => <button className={`asset ${i === selected ? 'active' : ''}`} key={`${a.id}-${i}`} onClick={() => setSelected(i)}><span>◇ {a.name}</span><small>{a.source.kind.toUpperCase()} · {a.parts.length} parts</small></button>)}</section>
-        <details><summary>Build with Forma</summary><textarea aria-label="Project description" value={prompt} onChange={e => setPrompt(e.target.value)} /><label>Generation mode<select value={mode} onChange={e => setMode(e.target.value)}><option value="simulation">Deterministic demo</option><option value="live">Live generation</option></select></label>{mode === 'live' && <><label>Provider<input value={provider} onChange={e => setProvider(e.target.value)} /></label><label>Model<input value={model} onChange={e => setModel(e.target.value)} /></label><p>Set provider credentials in the server’s .env file.</p></>}<button disabled={busy} onClick={() => void generate()}>Build and import →</button></details>
+        {import.meta.env.VITE_FORMA_GENERATION_ENABLED !== 'false' && <details><summary>Build with Forma</summary><textarea aria-label="Project description" value={prompt} onChange={e => setPrompt(e.target.value)} /><label>Generation mode<select value={mode} onChange={e => setMode(e.target.value)}><option value="simulation">Deterministic demo</option><option value="live">Live generation</option></select></label>{mode === 'live' && <><label>Provider<input value={provider} onChange={e => setProvider(e.target.value)} /></label><label>Model<input value={model} onChange={e => setModel(e.target.value)} /></label><p>Set provider credentials in the server’s .env file.</p></>}<button disabled={busy} onClick={() => void generate()}>Build and import →</button></details>}
       </aside>;
-  return <><header><div className="brand"><span className="logo">A</span> ASTRA <span className="muted">INDUSTRIES</span></div><span className="tag">SPATIAL WORKBENCH / 001</span><button disabled={busy} onClick={openFilePicker}>+ Import project</button></header>
+  return <><header className="app-header"><div className="brand"><span className="logo">A</span> ASTRA <span className="muted">INDUSTRIES</span></div><span className="tag">SPATIAL WORKBENCH / 001</span><AuthControls beforeSignIn={() => preserveAuthWorkspace(assets, room, selected)} /><button disabled={busy} onClick={openFilePicker}>+ Import project</button></header>
     <main onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); void load(Array.from(e.dataTransfer.files)); }}>
       {isFullscreen && stage.current ? createPortal(workspace, stage.current) : workspace}
       <div ref={stage} className={`stage${expanded ? ' stage-expanded' : ''}`}>

@@ -2,9 +2,14 @@ node_modules/
 dist/
 .venv/
 .env
+.env.local
+.env.*.local
+.vercel/
 .astra/
 public/vendor/
 test-results/
 playwright-report/
 *.log
 __pycache__/
+.vercel
+.env*

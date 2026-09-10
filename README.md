@@ -2,6 +2,8 @@
 
 A hackathon project extending [Forma OSS](https://github.com/caid-technologies/Forma-OSS) by CAID Technologies into room-scale spatial design.
 
+**Live app:** https://astra-industries.vercel.app
+
 ## Vision
 
 Design set pieces, workstations, and equipment layouts for fabrication shops, manufacturing spaces, and laboratories. Build hardware projects with Forma, import existing Forma projects or plain STEP files, place them in a 3D room, and animate how the space works.
@@ -95,3 +97,18 @@ Library storage is per browser/device/origin, subject to browser quota and evict
 With the app running on port 8787, run `npm run test:gif`. It imports deterministic fixtures, renders and decodes real GIF downloads to check dimensions, moving frames, timing and looping, verifies section filtering/metadata, tests library persistence and both motion presets, and covers cancellation, fullscreen, and mobile layout. No Forma installation or external fixture download is needed for this suite. Run `npm run test:fullscreen` for the existing fullscreen regressions. Screenshots are saved under `test-results/10-*.png`.
 
 GIF encoding uses `gifenc` (MIT); the test-only GIF decoder is `omggif` (MIT).
+
+## Vercel deployment
+
+`vercel.json` deploys the Vite frontend with `npm ci`, `npm run build`, and output directory `dist`. The project is linked to `isayahcs-projects/astra-industries` on Vercel.
+
+Production/preview environment variables:
+- `VITE_SUPABASE_URL`: the Supabase project URL.
+- `VITE_SUPABASE_PUBLISHABLE_KEY`: the public browser key (never a service-role/secret key).
+- `VITE_FORMA_GENERATION_ENABLED=false`: hides local-only Forma generation controls; generate projects with Forma separately, then import them into Astra.
+
+The deployment serves rendering, imports, GIF exports, local asset library, and GitHub Auth. The Node/Python generation server is not deployed. `.vercelignore` excludes environment files, virtual environments, local databases/caches, server code, Supabase config, and test screenshots.
+
+The Supabase production Site URL and redirect allowlist include `https://astra-industries.vercel.app`; GitHub's OAuth callback remains `https://mrhxfmtofvrgfaikllfw.supabase.co/auth/v1/callback`. Preview deployment origins must be explicitly allowed before using OAuth on them.
+
+Deploy the current checkout with `vercel deploy --prod --yes --scope isayahcs-projects`. Validate public rendering/imports/GIFs with `node scripts/deployment-smoke.mjs`. Set `ASTRA_BASE_URL=https://astra-industries.vercel.app` when running `node scripts/auth-live-smoke.mjs` to check the production GitHub redirect without signing in.
