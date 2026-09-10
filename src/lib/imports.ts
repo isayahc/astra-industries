@@ -41,19 +41,22 @@ export class ImportService {
       const doc = readFormaDocument(input, file.name);
       const reference = cadFileReference(doc.cad);
       const normalized = reference?.replace(/\\/g, '/').split('?')[0];
-      const candidates = normalized ? inputs.filter(f => /\.(step|stp)$/i.test(f.name) && (
-        (f.webkitRelativePath || f.name).replace(/\\/g, '/').endsWith(`/${normalized}`) ||
-        (f.webkitRelativePath || f.name) === normalized || f.name === normalized.split('/').pop()
-      )) : [];
+      const isRemoteReference = normalized ? /^(?:[a-z]+:)?\/\//i.test(normalized) : false;
+      const cadInputs = inputs.filter(f => /\.(step|stp)$/i.test(f.name));
+      const normalizedReference = normalized?.replace(/^\.\//, '');
+      const exactCandidates = normalizedReference && !isRemoteReference ? cadInputs.filter(f => {
+        const path = (f.webkitRelativePath || f.name).replace(/\\/g, '/').replace(/^\.\//, '');
+        return path === normalizedReference;
+      }) : [];
+      const basename = normalizedReference?.split('/').pop();
+      const basenameCandidates = basename && !isRemoteReference ? cadInputs.filter(f => f.name === basename) : [];
+      const candidates = exactCandidates.length ? exactCandidates : basenameCandidates;
       if (candidates.length > 1) throw new Error(`Multiple files match ${normalized}. Select only the intended CAD artifact.`);
       if (candidates.length === 1) {
         const cad = candidates[0];
-        const manifest = record(input);
-        if (Array.isArray(manifest.artifacts)) {
-          const declaration = manifest.artifacts.map(record).find(a => typeof a.path === 'string' && a.path.replace(/\\/g, '/') === normalized);
-          if (declaration?.sha256 && declaration.sha256 !== await digestBytes(await cad.arrayBuffer())) {
-            throw new Error(`Integrity check failed for ${cad.name}: bytes do not match the Forma manifest SHA-256.`);
-          }
+        const declaration = doc.artifacts.find(a => String(a.path).replace(/\\/g, '/').replace(/^\.\//, '') === normalizedReference || String(a.path).split('/').pop() === cad.name);
+        if (declaration?.sha256 && declaration.sha256 !== await digestBytes(await cad.arrayBuffer())) {
+          throw new Error(`Integrity check failed for ${cad.name}: bytes do not match the Forma manifest SHA-256.`);
         }
         // Forma mechanical data is always Z-up; standalone STEP options do not change that contract.
         const geometry = await this.step(cad, { upAxis: 'Z', scale: 1 }, progress);
