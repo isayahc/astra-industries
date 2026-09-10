@@ -14,9 +14,19 @@ try {
   await expect.poll(() => page.evaluate(() => document.fullscreenElement?.classList.contains('stage'))).toBe(true);
   await expect.poll(() => page.locator('canvas').evaluate(el => Math.abs(el.clientWidth - innerWidth) < 2 && Math.abs(el.clientHeight - innerHeight) < 2)).toBe(true);
   await page.screenshot({ path: 'test-results/fullscreen-after.png' });
+  await page.getByRole('button', { name: 'Show workspace' }).click();
+  await expect(page.locator('#workspace-panel')).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.fullscreenElement.contains(document.querySelector('#workspace-panel')))).toBe(true);
+  await page.getByLabel('Width', { exact: true }).fill('9');
+  await expect(page.getByLabel('Width', { exact: true })).toHaveValue('9');
+  await page.screenshot({ path: 'test-results/fullscreen-workspace-desktop.png' });
+  await page.getByRole('button', { name: 'Hide workspace' }).click();
+  await expect(page.locator('#workspace-panel')).toBeHidden();
   await page.getByRole('button', { name: 'Exit fullscreen' }).click();
   await expect(page.getByRole('button', { name: 'Enter fullscreen' })).toBeVisible();
   await expect.poll(() => page.evaluate(() => document.fullscreenElement === null)).toBe(true);
+  await expect(page.locator('#workspace-panel')).toBeVisible();
+  await expect(page.getByLabel('Width', { exact: true })).toHaveValue('9');
   // Native Escape exits fullscreen via fullscreenchange; emulate browser-driven exit.
   await page.getByRole('button', { name: 'Enter fullscreen' }).click();
   await page.evaluate(() => document.exitFullscreen());
@@ -27,6 +37,11 @@ try {
   await expect(page.locator('.stage')).toHaveClass(/stage-expanded/);
   await expect.poll(() => page.locator('canvas').evaluate(el => Math.abs(el.clientWidth - innerWidth) < 2 && Math.abs(el.clientHeight - innerHeight) < 2)).toBe(true);
   await page.screenshot({ path: 'test-results/fullscreen-mobile.png' });
+  await page.getByRole('button', { name: 'Show workspace' }).click();
+  await expect(page.locator('#workspace-panel')).toBeVisible();
+  await page.screenshot({ path: 'test-results/fullscreen-workspace-mobile.png' });
+  await page.getByRole('button', { name: 'Hide workspace' }).click();
+  await expect(page.locator('#workspace-panel')).toBeHidden();
   await page.keyboard.press('Escape');
   await expect(page.locator('.stage')).not.toHaveClass(/stage-expanded/);
   expect(errors).toEqual([]);
