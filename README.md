@@ -54,6 +54,7 @@ Use **Build with Forma → Deterministic demo** to verify the full creation/impo
 ## Import contracts
 
 - Forma: Hardware IR 0.1/0.2, `project_ir` / `hardware_ir` wrappers, `forma-project` manifest v1, and `forma.project` namespace objects. Object versions are revision counters. Mechanical placements and inline CAD mesh vertices use millimeters with Z up.
+- SDK/agent handoff: see [`docs/forma-handoff.md`](docs/forma-handoff.md) for the canonical compiled artifact contract used by the Forma SDK, OpenCode, and Codex.
 - Select referenced STEP artifacts together with their Forma JSON. Missing CAD falls back to labeled mechanical envelopes when available; otherwise the import reports an error. Remote CAD URLs and server-local paths are not fetched automatically.
 - STEP: `.step` and `.stp` Part 21 files are converted with `occt-import-js@0.0.23`. OpenCascade reads source units; the UI provides source-up-axis and scale correction. Geometry conversion runs in an isolated worker with a 120-second timeout. Successful conversions are cached for repeated imports.
 - Scene asset schema v1: stable content-derived asset/part IDs, source filename/digest/project identity, named hierarchy, indexed triangle meshes, dimensions, and warnings. All geometry is normalized to meters, Y up, centered in X/Z and floor-aligned; `originOffset` retains the original normalization offset. Metadata is allowlisted for display.
