@@ -1,5 +1,5 @@
 import type { Asset, Vec3 } from './scene';
-import type { SceneManifest } from './workspace';
+import { readManifest, type SceneManifest } from './workspace';
 import type { SavedScene } from './scene-repository';
 
 export const ASTRA_SCENE_SCHEMA_VERSION = 1 as const;
@@ -53,49 +53,63 @@ export type AstraScene = {
   animation?: AnimationTimeline;
 };
 
-const finite = (value: number, label: string, errors: string[]) => {
-  if (!Number.isFinite(value)) errors.push(`${label} must be finite.`);
-};
-
-function validateVector(vector: Vec3, label: string, errors: string[]) {
-  vector.forEach((value, index) => finite(value, `${label}[${index}]`, errors));
+const isRecord = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+const isString = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0;
+const isFiniteNumber = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
+function validateVector(vector: unknown, label: string, errors: string[]) {
+  if (!Array.isArray(vector) || vector.length !== 3 || !vector.every(isFiniteNumber)) errors.push(`${label} must contain exactly three finite numbers.`);
 }
 
-export function validateScene(scene: AstraScene): string[] {
+/** Persisted browser data is unknown, even when it was originally written by us. */
+export function validateScene(value: unknown): string[] {
   const errors: string[] = [];
-  if (scene.schemaVersion !== ASTRA_SCENE_SCHEMA_VERSION) errors.push(`Unsupported scene schema version: ${scene.schemaVersion}.`);
-  if (!scene.id.trim()) errors.push('Scene ID is required.');
-  ['width', 'depth', 'height'].forEach(key => {
-    const value = scene.room[key as keyof SceneRoom];
-    finite(value, `room.${key}`, errors);
-    if (value <= 0) errors.push(`room.${key} must be greater than zero.`);
-  });
+  if (!isRecord(value)) return ['Saved scene must be an object.'];
+  const scene = value;
+  if (scene.schemaVersion !== ASTRA_SCENE_SCHEMA_VERSION) errors.push('Unsupported scene schema version.');
+  if (!isString(scene.id)) errors.push('Scene ID is required.');
+  if (!isRecord(scene.source)) errors.push('Scene source must be an object.');
+  else for (const key of ['projectId','revision']) if (scene.source[key] !== undefined && !isString(scene.source[key])) errors.push(`source.${key} must be a non-empty string.`);
+  if (!isRecord(scene.room)) errors.push('Saved room dimensions are missing or invalid.');
+  else for (const key of ['width','depth','height']) if (!isFiniteNumber(scene.room[key]) || scene.room[key] < 1 || scene.room[key] > 100) errors.push(`room.${key} must be between 1 and 100 meters.`);
+  if (!Array.isArray(scene.instances) || scene.instances.length > 1000) return [...errors,'Scene instances must be an array of at most 1,000 entries.'];
   const ids = new Set<string>();
   for (const instance of scene.instances) {
-    if (!instance.id.trim()) errors.push('Scene instance ID is required.');
-    if (ids.has(instance.id)) errors.push(`Duplicate scene instance ID: ${instance.id}.`);
-    ids.add(instance.id);
-    if (!instance.assetId.trim()) errors.push(`Scene instance ${instance.id} is missing an asset ID.`);
-    validateVector(instance.position, `instance ${instance.id} position`, errors);
-    validateVector(instance.rotation, `instance ${instance.id} rotation`, errors);
+    if (!isRecord(instance)) { errors.push('A scene instance is not an object.'); continue; }
+    if (!isString(instance.id)) errors.push('Scene instance ID is required.');
+    else { if (ids.has(instance.id)) errors.push('Duplicate scene instance ID.'); ids.add(instance.id); }
+    if (!isString(instance.assetId)) errors.push('Scene instance asset ID is required.');
+    if (!isString(instance.name)) errors.push('Scene instance name is required.');
+    if (typeof instance.visible !== 'boolean') errors.push('Scene instance visibility must be a boolean.');
+    validateVector(instance.position, 'Instance position', errors);
+    validateVector(instance.rotation, 'Instance rotation', errors);
   }
-  if (scene.animation) {
-    finite(scene.animation.durationSeconds, 'animation.durationSeconds', errors);
-    finite(scene.animation.fps, 'animation.fps', errors);
-    if (scene.animation.durationSeconds < 0) errors.push('animation.durationSeconds cannot be negative.');
-    if (scene.animation.fps <= 0) errors.push('animation.fps must be greater than zero.');
+  if (scene.animation !== undefined) {
+    if (!isRecord(scene.animation) || !Array.isArray(scene.animation.tracks) || scene.animation.tracks.length > 1000) return [...errors,'Invalid saved animation tracks.'];
+    if (!isFiniteNumber(scene.animation.durationSeconds) || scene.animation.durationSeconds < 0 || scene.animation.durationSeconds > 120) errors.push('Animation duration must be between 0 and 120 seconds.');
+    if (!isFiniteNumber(scene.animation.fps) || scene.animation.fps <= 0) errors.push('Animation frame rate must be positive.');
+    let keyCount = 0;
     for (const track of scene.animation.tracks) {
-      if (!ids.has(track.instanceId)) errors.push(`Animation track references missing instance: ${track.instanceId}.`);
+      if (!isRecord(track) || !Array.isArray(track.keyframes)) { errors.push('Invalid animation track.'); continue; }
+      if (!isString(track.instanceId) || !ids.has(track.instanceId)) errors.push('Animation track references a missing instance.');
       let previous = -1;
       for (const keyframe of track.keyframes) {
-        finite(keyframe.timeSeconds, `keyframe ${track.instanceId} time`, errors);
-        if (keyframe.timeSeconds < previous) errors.push(`Keyframes for ${track.instanceId} must be ordered by time.`);
-        if (keyframe.timeSeconds > scene.animation.durationSeconds) errors.push(`Keyframe for ${track.instanceId} exceeds the timeline duration.`);
-        previous = keyframe.timeSeconds;
-        if (keyframe.position) validateVector(keyframe.position, `keyframe ${track.instanceId} position`, errors);
-        if (keyframe.rotation) validateVector(keyframe.rotation, `keyframe ${track.instanceId} rotation`, errors);
+        if (++keyCount > 10000) return [...errors,'Saved animation exceeds 10,000 keys.'];
+        if (!isRecord(keyframe)) { errors.push('Invalid animation keyframe.'); continue; }
+        if (!isFiniteNumber(keyframe.timeSeconds) || keyframe.timeSeconds < 0 || keyframe.timeSeconds < previous || (isFiniteNumber(scene.animation.durationSeconds) && keyframe.timeSeconds > scene.animation.durationSeconds)) errors.push('Invalid or unordered keyframe time.');
+        if (isFiniteNumber(keyframe.timeSeconds)) previous = keyframe.timeSeconds;
+        if (keyframe.position !== undefined) validateVector(keyframe.position,'Keyframe position',errors);
+        if (keyframe.rotation !== undefined) validateVector(keyframe.rotation,'Keyframe rotation',errors);
+        if (keyframe.visible !== undefined && typeof keyframe.visible !== 'boolean') errors.push('Keyframe visibility must be a boolean.');
       }
     }
+  }
+  if (scene.workspaceDocument !== undefined) {
+    try { readManifest(scene.workspaceDocument); } catch { errors.push('The saved workspace document is invalid or unsupported.'); }
+  }
+  if (scene.activeCloudScene !== undefined && scene.activeCloudScene !== null) {
+    const cloud=scene.activeCloudScene;
+    if (!isRecord(cloud) || !isString(cloud.id) || !isString(cloud.owner_id) || !isString(cloud.name) || !isFiniteNumber(cloud.revision) || !Number.isInteger(cloud.revision) || cloud.revision < 0 || !isString(cloud.updated_at)) errors.push('The saved cloud scene reference is invalid.');
+    else if (cloud.document !== undefined) { try { readManifest(cloud.document); } catch { errors.push('The saved cloud revision document is invalid.'); } }
   }
   return errors;
 }

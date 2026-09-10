@@ -1,17 +1,35 @@
-import {loadScene,saveScene} from './scene-storage';
+import {backupAndResetDraft,exportStoredDraft,loadScene,saveScene, type DraftBackup} from './scene-storage';
+import type {AstraScene} from './scene-manifest';
 import {emptyWorkspace,hydrateManifest,makeManifest,missingAsset,readManifest,type Workspace} from './workspace';
 import type {SavedScene} from './scene-repository';
 
-export async function saveWorkspaceDraft(workspace:Workspace,owner:string|null,cloudScene:SavedScene|null=null){
+function storedWorkspace(workspace:Workspace,owner:string|null,cloudScene:SavedScene|null):AstraScene{
   const document=makeManifest(workspace);readManifest(document);
-  await saveScene({schemaVersion:1,id:'active-scene',source:{},room:{width:workspace.room[0],depth:workspace.room[1],height:workspace.room[2]},
-    instances:workspace.items.map(({id,name,asset,position,rotation,visible})=>({id,name,assetId:asset.id,position,rotation,visible})),workspaceDocument:document,activeCloudScene:cloudScene?.owner_id===owner?cloudScene:null},
+  return {schemaVersion:1,id:'active-scene',source:{},room:{width:workspace.room[0],depth:workspace.room[1],height:workspace.room[2]},
+    instances:workspace.items.map(({id,name,asset,position,rotation,visible})=>({id,name,assetId:asset.id,position,rotation,visible})),workspaceDocument:document,activeCloudScene:cloudScene?.owner_id===owner?cloudScene:null};
+}
+export async function saveWorkspaceDraft(workspace:Workspace,owner:string|null,cloudScene:SavedScene|null=null){
+  await saveScene(storedWorkspace(workspace,owner,cloudScene),
     workspace.items.filter(item=>!item.missing).map(item=>item.asset),owner??'guest');
 }
+export async function replaceDraftWithBackup(workspace:Workspace,owner:string|null,failedScope:string|undefined,cloudScene:SavedScene|null){
+  return backupAndResetDraft(failedScope,storedWorkspace(workspace,owner,cloudScene),owner??'guest',workspace.items.filter(item=>!item.missing).map(item=>item.asset));
+}
+export async function backupDraft(scope:string|undefined):Promise<DraftBackup>{
+  return exportStoredDraft(scope);
+}
 export async function loadWorkspaceDraft(owner:string|null):Promise<{workspace:Workspace;scene:SavedScene|null}|null>{
-  const stored=await loadScene(owner??'guest')??(!owner?await loadScene():undefined);
+  const loadWithTimeout=(scope?:string)=>Promise.race([
+    loadScene(scope),
+    new Promise<never>((_,reject)=>setTimeout(()=>reject(new Error('Saved local workspace did not finish loading. Close other Astra tabs and retry.')),10000)),
+  ]);
+  const stored=await loadWithTimeout(owner??'guest')??(!owner?await loadWithTimeout():undefined);
   if(!stored)return null;
-  if(stored.scene.workspaceDocument)return {workspace:hydrateManifest(readManifest(stored.scene.workspaceDocument),stored.assets),scene:stored.scene.activeCloudScene?.owner_id===owner?stored.scene.activeCloudScene:null};
+  if(stored.scene.workspaceDocument){
+    const workspace=hydrateManifest(readManifest(stored.scene.workspaceDocument),stored.assets);
+    workspace.items=workspace.items.map(item=>stored.invalidAssetIds.includes(item.asset.id)?{...item,asset:{...item.asset,warnings:[...item.asset.warnings,'Cached geometry is invalid or belongs to a different source revision. Reimport the matching original file to repair it.']}}:item);
+    return {workspace,scene:stored.scene.activeCloudScene?.owner_id===owner?stored.scene.activeCloudScene:null};
+  }
   // Compatibility with the scene format merged in #38/#39. Preserve every
   // occurrence of shared geometry and its instance identity, not a deduped list.
   const byId=new Map(stored.assets.map(asset=>[asset.id,asset]));const workspace=emptyWorkspace();
