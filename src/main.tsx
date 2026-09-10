@@ -5,37 +5,24 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { ImportService } from './lib/imports';
 import type { Asset } from './lib/scene';
+import { createWorld } from './lib/world';
+import { regionBounds, type FloorRegion } from './lib/gif';
+import { CaptureTools } from './components/capture-tools';
 import './style.css';
 
 const importer = new ImportService();
-function Viewer({ assets, room, selected }: { assets: Asset[]; room: number[]; selected: number }) {
+function Viewer({ assets, room, selected, region }: { assets: Asset[]; room: number[]; selected: number; region: FloorRegion | null }) {
   const host = useRef<HTMLDivElement>(null);
+  const sceneRef = useRef<THREE.Scene | null>(null);
   useEffect(() => {
     const el = host.current!;
-    const scene = new THREE.Scene(); scene.background = new THREE.Color('#192322');
+    const world = createWorld(assets, room, selected);
+    const { scene, groups } = world;
+    sceneRef.current = scene;
     const camera = new THREE.PerspectiveCamera(45, 1, 0.0001, 10000);
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); el.appendChild(renderer.domElement);
     const controls = new OrbitControls(camera, renderer.domElement); controls.enableDamping = true;
-    scene.add(new THREE.HemisphereLight(0xffffff, 0x63736b, 3));
-    const light = new THREE.DirectionalLight(0xffffff, 3); light.position.set(4, 8, 5); scene.add(light);
-    const floor = new THREE.Mesh(new THREE.BoxGeometry(room[0], .025, room[1]), new THREE.MeshStandardMaterial({ color: '#34433c', roughness: .95 }));
-    floor.position.y = -.018; scene.add(floor);
-    const grid = new THREE.GridHelper(Math.max(room[0], room[1]), Math.max(2, Math.round(Math.max(room[0], room[1]) * 2)), 0x82917b, 0x46594d); scene.add(grid);
-    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(room[0], room[2], room[1])), new THREE.LineBasicMaterial({ color: 0x7e9784, transparent: true, opacity: .35 }));
-    edges.position.y = room[2] / 2; scene.add(edges);
-    let offset = 0;
-    const groups: THREE.Group[] = [];
-    assets.forEach((asset, index) => {
-      const group = new THREE.Group();
-      asset.parts.forEach(part => {
-        const geometry = new THREE.BufferGeometry();
-        geometry.setAttribute('position', new THREE.Float32BufferAttribute(part.vertices, 3)); geometry.setIndex(part.indices); geometry.computeVertexNormals();
-        const mesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ color: part.color ? new THREE.Color(...part.color) : index === selected ? '#c8ef82' : '#b9c9c5', metalness: .2, roughness: .55 }));
-        group.add(mesh);
-      });
-      group.position.x = offset; offset += asset.dimensions[0] + .25; groups.push(group); scene.add(group);
-    });
     const focus = () => {
       const group = groups[selected];
       if (group) {
@@ -53,10 +40,19 @@ function Viewer({ assets, room, selected }: { assets: Asset[]; room: number[]; s
     renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); });
     return () => {
       observer.disconnect(); renderer.setAnimationLoop(null); controls.dispose();
-      scene.traverse(object => { const mesh = object as THREE.Mesh; mesh.geometry?.dispose(); if (mesh.material) for (const material of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) material.dispose(); });
+      world.dispose(); sceneRef.current = null;
       renderer.dispose(); el.removeChild(renderer.domElement);
     };
   }, [assets, room, selected]);
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!region || !scene) return;
+    let box: THREE.Box3;
+    try { box = regionBounds(region, room); } catch { return; }
+    const outline = new THREE.Box3Helper(box, 0xc8ef82);
+    scene.add(outline);
+    return () => { scene.remove(outline); outline.geometry.dispose(); (outline.material as THREE.Material).dispose(); };
+  }, [region, room, assets, selected]);
   return <div className="viewport" ref={host} aria-label="Interactive 3D room" />;
 }
 
@@ -77,6 +73,8 @@ function App() {
   const [fullscreen, setFullscreen] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [workspaceVisible, setWorkspaceVisible] = useState(false);
+  const [captureOpen, setCaptureOpen] = useState(false);
+  const [captureRegion, setCaptureRegion] = useState<FloorRegion | null>(null);
   const isFullscreen = fullscreen || expanded;
   useEffect(() => {
     const sync = () => setFullscreen(document.fullscreenElement === stage.current);
@@ -165,7 +163,15 @@ function App() {
   return <><header><div className="brand"><span className="logo">A</span> ASTRA <span className="muted">INDUSTRIES</span></div><span className="tag">SPATIAL WORKBENCH / 001</span><button disabled={busy} onClick={openFilePicker}>+ Import project</button></header>
     <main onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); void load(Array.from(e.dataTransfer.files)); }}>
       {isFullscreen && stage.current ? createPortal(workspace, stage.current) : workspace}
-      <div ref={stage} className={`stage${expanded ? ' stage-expanded' : ''}`}><div className="stage-label"><span className="dot" /> PERSPECTIVE VIEW <span>1:1 / METERS</span></div>{isFullscreen && <button className="workspace-toggle" aria-controls="workspace-panel" aria-expanded={workspaceVisible} onClick={() => setWorkspaceVisible(value => !value)}>{workspaceVisible ? 'Hide workspace' : 'Show workspace'}</button>}<button className="fullscreen-toggle" aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'} aria-pressed={isFullscreen} title={isFullscreen ? 'Exit fullscreen (Esc)' : 'Expand 3D viewer'} onClick={() => void toggleFullscreen()}>{isFullscreen ? '↙ Exit fullscreen' : '⛶ Fullscreen'}</button><Viewer assets={assets} room={room} selected={selected} /><div className="hint">Drag to orbit · Right-drag to pan · Scroll to zoom · Select an asset to frame</div></div>
+      <div ref={stage} className={`stage${expanded ? ' stage-expanded' : ''}`}>
+        <div className="stage-label"><span className="dot" /> PERSPECTIVE VIEW <span>1:1 / METERS</span></div>
+        {isFullscreen && <button className="workspace-toggle" aria-controls="workspace-panel" aria-expanded={workspaceVisible} onClick={() => setWorkspaceVisible(value => !value)}>{workspaceVisible ? 'Hide workspace' : 'Show workspace'}</button>}
+        <button className="fullscreen-toggle" aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'} aria-pressed={isFullscreen} title={isFullscreen ? 'Exit fullscreen (Esc)' : 'Expand 3D viewer'} onClick={() => void toggleFullscreen()}>{isFullscreen ? '↙ Exit fullscreen' : '⛶ Fullscreen'}</button>
+        <button className="capture-launch" aria-expanded={captureOpen} onClick={() => setCaptureOpen(value => !value)}>GIF studio</button>
+        <Viewer assets={assets} room={room} selected={selected} region={captureRegion} />
+        <CaptureTools open={captureOpen} assets={assets} room={room} selected={selected} close={() => setCaptureOpen(false)} onRegion={setCaptureRegion} addAsset={asset => { setAssets(old => [...old, asset]); setSelected(assets.length); setStatus(`Added ${asset.name} from library`); }} />
+        <div className="hint">Drag to orbit · Right-drag to pan · Scroll to zoom · Select an asset to frame</div>
+      </div>
       <aside className="inspector"><div className="eyebrow">INSPECTOR</div>{asset ? <><h2>{asset.name}</h2><span className="badge">{asset.source.kind.toUpperCase()}</span><h3>Dimensions</h3><p>{asset.dimensions.map(n => n.toFixed(3)).join(' × ')} m<br /><small>Width × height × depth</small></p><h3>Source</h3><p className="wrap">{asset.source.filename}<br />{asset.source.version && `Version ${asset.source.version}`}</p>{asset.warnings.map(w => <p className="notice" key={w}>{w}</p>)}<h3>Parts</h3>{asset.parts.map(part => <details key={part.id}><summary>{part.name}</summary>{Object.entries(part.metadata).filter(([, v]) => v).map(([key, value]) => <p key={key}><b>{key}</b>: {value}</p>)}</details>)}</> : <><h2>A space for<br />what’s next.</h2><p>Select an imported asset to inspect its dimensions, parts, and source.</p><div className="room-stat">{room[0] * room[1]}<small>m² floor area</small></div></>}</aside>
     </main><footer><span role="status">{busy ? '◌ ' : '● '}{status}</span><span>FORMA POWERED · LOCAL FIRST</span></footer>{error && <div className="error" role="alert">{error}<button aria-label="Dismiss error" onClick={() => setError('')}>×</button></div>}</>;
 }
