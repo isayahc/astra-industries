@@ -20,6 +20,10 @@ export class SceneRepository {
     const {data,error}=await this.client.from('assets').select('id,asset_key,name,source_kind,metadata').eq('owner_id',this.owner).order('updated_at',{ascending:false}).limit(200);
     if(error)throw new Error(error.message);return data as AssetRow[];
   }
+  async deleteMetadata(assetKey: string): Promise<void> {
+    const { error } = await this.client.from('assets').delete().eq('owner_id', this.owner).eq('asset_key', assetKey);
+    if (error) throw new Error(error.message);
+  }
   async save(workspace: Workspace, name: string, id: string, revision: number, uploadGeometry: boolean, progress:(text:string)=>void): Promise<{scene:SavedScene;workspace:Workspace}> {
     const copy:Workspace={...workspace,items:workspace.items.map(item=>({...item})),animation:structuredClone(workspace.animation)};
     await this.saveMetadata(copy.items.map(item=>item.asset));
