@@ -10,6 +10,7 @@ import type { SavedScene } from './lib/scene-repository';
 import type { FloorRegion } from './lib/gif';
 import type { GifMetadata } from './lib/gif';
 import { makeAnimationFeedback } from './lib/animation-feedback';
+import { SPACE_BRIEFS, buildSpace, inferSpaceBrief, type SpaceBriefKey } from './lib/space-builder';
 import { CaptureTools } from './components/capture-tools';
 import { AuthControls } from './components/auth-controls';
 import { WorkspaceViewer } from './components/workspace-viewer';
@@ -32,6 +33,7 @@ function App(){
   const [status,setStatus]=useState('Ready to import');const[error,setError]=useState('');const[busy,setBusy]=useState(true);
   const [prompt,setPrompt]=useState('A small 5V laboratory temperature monitor with a display');const[mode,setMode]=useState('simulation');
   const [model,setModel]=useState('');const[provider,setProvider]=useState('openai');
+  const [spaceKey,setSpaceKey]=useState<SpaceBriefKey>('maker');const[spaceRequirements,setSpaceRequirements]=useState(SPACE_BRIEFS.maker.description);
   const [upAxis,setUpAxis]=useState<'Z'|'Y'>('Z');const[scale,setScale]=useState(1);
   const stage=useRef<HTMLDivElement>(null);const input=useRef<HTMLInputElement>(null);
   const [fullscreen,setFullscreen]=useState(false);const[expanded,setExpanded]=useState(false);const[workspaceVisible,setWorkspaceVisible]=useState(false);
@@ -118,6 +120,13 @@ function App(){
     if (!response.ok) throw new Error(data.error ?? 'Could not send animation feedback.');
     setStatus(data.message ?? 'Animation feedback saved for Forma.');
   }
+  function buildDemoSpace() {
+    if (workspace.items.length && !window.confirm('Replace the current room with a generated demo space? Export or save the current room first if you want to keep it.')) return;
+    const key = inferSpaceBrief(spaceRequirements) || spaceKey;
+    const result = buildSpace(key, spaceRequirements);
+    replace(result.workspace); setCurrentScene(null); setSelected(result.movingIndex); setSelectedPart(-1);
+    setStatus(`Built ${result.brief.label} layout with ${result.workspace.items.length} Forma equipment envelopes. Replace envelopes with Forma-authored equipment when ready.`);
+  }
   function exportScene(){
     const blob=new Blob([JSON.stringify(makeManifest(workspace,true))],{type:'application/json'});const url=URL.createObjectURL(blob);const link=document.createElement('a');link.href=url;link.download='astra-scene.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
   }
@@ -138,8 +147,9 @@ function App(){
     <small role="status" aria-label="Local draft status">{localSaved?'Local draft saved':'Local draft changes pending'}</small>
     <div className="capture-actions"><button onClick={()=>document.querySelector('.timeline')?.scrollIntoView({block:'start'})}>Animate</button><button onClick={()=>document.querySelector('[aria-label="Scene persistence"]')?.scrollIntoView({block:'start'})}>Save / open scenes</button></div>
     <input ref={input} aria-label="Import files" type="file" accept=".json,.step,.stp" multiple hidden onChange={e=>{finishFilePicker();void load(Array.from(e.target.files??[]));e.target.value='';}}/>
-    <button className="import" disabled={busy} onClick={openFilePicker}>↑ Drop files or browse<br/><small>FORMA JSON · STEP · ASTRA SCENE</small></button>
-    <details><summary>STEP import settings</summary><label>Source up axis<select value={upAxis} onChange={e=>setUpAxis(e.target.value as 'Z'|'Y')}><option>Z</option><option>Y</option></select></label><label>Scale correction<input type="number" min=".000001" value={scale} onChange={e=>setScale(Number(e.target.value))}/></label></details>
+     <button className="import" disabled={busy} onClick={openFilePicker}>↑ Drop files or browse<br/><small>FORMA JSON · STEP · ASTRA SCENE</small></button>
+     <section aria-label="Space brief"><div className="eyebrow">SPACE BRIEF / LOCAL DEMO</div><p>Describe the space. Astra organizes zones and workflow; Forma OSS authors the actual equipment.</p><label>Space type<select aria-label="Space type" value={spaceKey} disabled={busy} onChange={e=>{const key=e.target.value as SpaceBriefKey;setSpaceKey(key);setSpaceRequirements(SPACE_BRIEFS[key].description);}}>{Object.values(SPACE_BRIEFS).map(brief=><option key={brief.key} value={brief.key}>{brief.label}</option>)}</select></label><label>Requirements<textarea aria-label="Space requirements" value={spaceRequirements} maxLength={2000} disabled={busy} onChange={e=>setSpaceRequirements(e.target.value)} /></label><button className="capture-primary" disabled={busy||!spaceRequirements.trim()} onClick={buildDemoSpace}>Build space layout</button><small>Demo output uses clearly marked planning envelopes and includes a simple material-flow animation.</small></section>
+     <details><summary>STEP import settings</summary><label>Source up axis<select value={upAxis} onChange={e=>setUpAxis(e.target.value as 'Z'|'Y')}><option>Z</option><option>Y</option></select></label><label>Scale correction<input type="number" min=".000001" value={scale} onChange={e=>setScale(Number(e.target.value))}/></label></details>
     <section><div className="eyebrow">ROOM / METERS</div><div className="dimensions">{['Width','Depth','Height'].map((name,i)=><label key={name}>{name}<input aria-label={name} type="number" min="1" max="100" step=".5" disabled={busy} value={workspace.room[i]} onChange={e=>{const n=Number(e.target.value);if(n>=1&&n<=100)change({...workspace,room:workspace.room.map((v,j)=>j===i?n:v) as Vec3});}}/></label>)}</div><div className="capture-actions"><button onClick={()=>{setSelected(-1);setSelectedPart(-1);setFocus(n=>n+1);}}>View entire room</button><button disabled={busy} onClick={()=>{replace(emptyWorkspace());setCurrentScene(null);}}>New room</button></div></section>
     <section><div className="eyebrow">SCENE COLLECTION <span>{workspace.items.length}</span></div>{workspace.items.map((item,i)=><button className={`asset ${selected===i?'active':''}`} key={item.id} onClick={()=>{setSelected(i);setSelectedPart(-1);setFocus(n=>n+1);}}><span>◇ {item.name}{item.missing?' · MISSING GEOMETRY':''}</span><small>{item.asset.source.kind.toUpperCase()} · {item.asset.parts.length} components</small></button>)}</section>
     <div className="capture-actions"><button disabled={busy||!history.past.length} onClick={()=>{setPlaying(false);setTime(null);setHistory(old=>({past:old.past.slice(0,-1),present:old.past.at(-1)!,future:[old.present,...old.future]}));}}>Undo</button><button disabled={busy||!history.future.length} onClick={()=>{setPlaying(false);setTime(null);setHistory(old=>({past:[...old.past,old.present],present:old.future[0],future:old.future.slice(1)}));}}>Redo</button></div>

@@ -6,6 +6,7 @@ import { createWorld,applyWorldPoses } from '../src/lib/world.ts';
 import { ImportService } from '../src/lib/imports.ts';
 import { digestBytes } from '../src/lib/scene.ts';
 import { makeAnimationFeedback } from '../src/lib/animation-feedback.ts';
+import { buildSpace, inferSpaceBrief } from '../src/lib/space-builder.ts';
 
 const fixture={hardware_ir_version:'0.2',overview:{title:'Lab fixture'},assembly_metadata:{project_id:'project-1',revision:7,source_agent:'codex',api_key:'secret-fixture'},components:[{ref_des:'U1',name:'Sensor'},{ref_des:'U2',name:'Display'}],bom:[{name:'Sensor',quantity:1}],validation:{warning:[{description:'Check mounting clearance'}]},mechanical:{component_placements:[{ref_des:'U1',label:'Sensor',position:{x_mm:0,y_mm:0,z_mm:50},size:{x_mm:100,y_mm:200,z_mm:100}},{ref_des:'U2',label:'Display',position:{x_mm:200,y_mm:0,z_mm:50},size:{x_mm:100,y_mm:100,z_mm:100}}]}};
 const raw=JSON.stringify(fixture);const asset=importForma(fixture,'fixture.json','digest-1');
@@ -24,6 +25,7 @@ const q=new Quaternion().setFromEuler(new Euler(...pose[0].rotation.map(MathUtil
 assert.equal(evaluateWorkspace(workspace.items,workspace.animation,null)[0].position[0],2);
 const feedback=makeAnimationFeedback(workspace,{schemaVersion:1,units:'m',upAxis:'Y',scope:'room',motion:'animation',width:480,height:480,frameCount:2,frameDelayMs:100,durationSeconds:.2,room:workspace.room,assets:[],note:'review',animation:workspace.animation,frames:[{time:0,instances:[]},{time:.1,instances:[]}]},'Raise the sensor during the final movement.');
 assert.equal(feedback.format,'astra.animation-feedback');assert.equal(feedback.version,1);assert.equal(feedback.instruction,'Raise the sensor during the final movement.');assert(!JSON.stringify(feedback).includes('secret-fixture'));
+assert.equal(inferSpaceBrief('I need sterile culture and cold storage'),'biofab');const demo=buildSpace('manufacturing','A compact production line');assert.equal(demo.workspace.room[0],14);assert.equal(demo.workspace.items.length,6);assert.equal(demo.workspace.animation.tracks.length,1);assert(demo.workspace.items.every(item=>item.asset.warnings[0].includes('Forma OSS')));
 const world=createWorld(workspace.items.map(i=>i.asset),workspace.room);applyWorldPoses(world.groups,pose);assert.equal(world.groups[0].position.x,3);world.dispose();
 assert.equal(JSON.stringify(fixture),raw);
 const portable=makeManifest(workspace,true);const reopened=hydrateManifest(readManifest(JSON.parse(JSON.stringify(portable))),[]);
