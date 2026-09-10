@@ -77,7 +77,13 @@ opencode
 
 Use the `/forma-demo` command in OpenCode. It compiles a validated project to `demo/forma-project.json`; import that file into Astra with **Import project**. The generated `demo/` directory is ignored by Git. Restart OpenCode after changing `opencode.json` because project configuration is loaded at startup.
 
+OpenCode now connects to both local servers: Forma provides equipment authoring and validation, while Astra exposes animation feedback, compiled-artifact handoff, and space-brief tools. Verify both with `opencode mcp list` before starting the demo.
+
 If the MCP server is unavailable, use the deterministic Forma demo or import an existing Forma JSON/STEP project as usual.
+
+### Build a space for the demo
+
+Use **Space brief / local demo** to describe the environment you want to organize, for example a biofab, small manufacturing plant, or DIY maker space. Astra creates the room dimensions, work zones, equipment positions, and a simple material-flow animation locally. These are explicitly marked planning envelopes, not fabricated equipment: Forma OSS remains responsible for authoring the real equipment artifacts. Import Forma-authored projects over the envelopes when they are ready.
 
 ### Animation feedback loop
 
