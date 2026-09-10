@@ -16,6 +16,7 @@ export type Room = { width: number; depth: number; height: number; walls: boolea
 export type FormaProject = {
   projectId?: string;
   revision?: string;
+  agent?: string;
   hardwareIrVersion: string;
   ir: Record<string, unknown>;
   source: 'project_ir' | 'hardware_ir' | 'namespace';

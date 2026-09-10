@@ -44,7 +44,7 @@ export function projectForClient(ir) {
       .filter(([key]) => !/(api.?key|token|secret|password|credential|authorization)/i.test(key)).map(([key, item]) => [key, scrub(item)]));
     return value;
   };
-  return scrub({ project_ir: ir, hardware_ir_version: ir.hardware_ir_version, overview: ir.overview, mechanical: ir.mechanical,
+  return scrub({ project_ir: ir, agent: ir.agent, hardware_ir_version: ir.hardware_ir_version, overview: ir.overview, mechanical: ir.mechanical,
     cad_model: ir.cad_model, part_definitions: ir.part_definitions, components: ir.components,
     assembly_metadata: { project_id: ir.assembly_metadata?.project_id } });
 }
