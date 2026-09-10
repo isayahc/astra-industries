@@ -21,8 +21,12 @@ function vector(value: unknown, label: string, positive = false): Vec3 {
 
 export type FormaDocument = {
   name: string; projectId?: string; version: string; mechanical: RecordValue;
-  cad: unknown; definitions: RecordValue[]; components: RecordValue[]; project: FormaProject;
+  cad: unknown; definitions: RecordValue[]; components: RecordValue[]; artifacts: RecordValue[]; project: FormaProject;
 };
+
+function artifactRecords(value: unknown): RecordValue[] {
+  return Array.isArray(value) ? value.map(record).filter(item => typeof item.path === 'string') : [];
+}
 
 export function readFormaDocument(input: unknown, filename: string): FormaDocument {
   let root = record(input);
@@ -63,7 +67,7 @@ export function readFormaDocument(input: unknown, filename: string): FormaDocume
     mechanical: record(ir.mechanical),
     cad: ir.cad_model,
     definitions: Array.isArray(ir.part_definitions) ? ir.part_definitions.map(record) : [],
-    components: Array.isArray(ir.components) ? ir.components.map(record) : [], project,
+    components: Array.isArray(ir.components) ? ir.components.map(record) : [], artifacts: artifactRecords(root.artifacts ?? ir.artifacts), project,
   };
 }
 
