@@ -78,7 +78,7 @@ Use `--authoring-agent codex` for Codex-authored projects. The resulting manifes
 
 ## Ownership Boundary
 
-Forma owns the authored Hardware IR, electrical validation, component identity, and compiled project revision. Astra owns room placement, camera context, visibility, and spatial review state. Astra spatial edits are not electrically revalidated by Forma unless a later explicit handoff workflow is used.
+Forma owns the authored Hardware IR, electrical validation, component identity, and compiled project revision. Astra owns room placement, camera context, visibility, and spatial review state. Astra spatial edits are not electrically revalidated by Forma unless a later explicit handoff workflow is used. Authored animation reviews are handed back as a scrubbed `astra.animation-feedback` package; OpenCode applies accepted mechanical changes through Forma's `forma.opencode.update_project` tool before Astra reimports the revised artifact.
 
 ## Compatibility
 

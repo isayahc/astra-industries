@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "bin": {
+    "astra": "cli/astra.mjs"
+  },
   "scripts": {
     "postinstall": "node scripts/prepare-vendor.mjs",
     "dev": "concurrently -k -n api,web \"node --env-file-if-exists=.env server/index.mjs\" \"vite --host 127.0.0.1\"",

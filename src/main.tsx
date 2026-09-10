@@ -8,6 +8,8 @@ import { preserveAuthWorkspace,restoreAuthWorkspace } from './lib/auth-workspace
 import { useUserId } from './lib/use-user';
 import type { SavedScene } from './lib/scene-repository';
 import type { FloorRegion } from './lib/gif';
+import type { GifMetadata } from './lib/gif';
+import { makeAnimationFeedback } from './lib/animation-feedback';
 import { CaptureTools } from './components/capture-tools';
 import { AuthControls } from './components/auth-controls';
 import { WorkspaceViewer } from './components/workspace-viewer';
@@ -109,6 +111,13 @@ function App(){
       for(;;){await new Promise(r=>setTimeout(r,1500));const response=await fetch(`/api/generations/${data.id}`);const job=await response.json();if(!response.ok||job.status==='failed')throw new Error(job.error??job.message);setStatus(job.message);if(job.status==='succeeded'){const next=await importer.files([new File([JSON.stringify(job.project)],'forma-generated.json')],{upAxis:'Z',scale:1},setStatus);setHistory(old=>({past:[...old.past,old.present].slice(-50),present:appendAssets(old.present,next),future:[]}));setSelected(workspace.items.length);setSelectedPart(-1);setStatus(`Forma ${mode} project imported`);break;}}
     }catch(e){setError((e as Error).message);setStatus('Generation failed');}finally{setBusy(false);}
   }
+  async function sendAnimationFeedback(review: GifMetadata, instruction: string) {
+    const feedback = makeAnimationFeedback(workspace, review, instruction);
+    const response = await fetch('/api/forma/feedback', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(feedback) });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error ?? 'Could not send animation feedback.');
+    setStatus(data.message ?? 'Animation feedback saved for Forma.');
+  }
   function exportScene(){
     const blob=new Blob([JSON.stringify(makeManifest(workspace,true))],{type:'application/json'});const url=URL.createObjectURL(blob);const link=document.createElement('a');link.href=url;link.download='astra-scene.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
   }
@@ -148,7 +157,7 @@ function App(){
         <button className="fullscreen-toggle" aria-label={isFullscreen?'Exit fullscreen':'Enter fullscreen'} aria-pressed={isFullscreen} onClick={()=>void toggleFullscreen()}>{isFullscreen?'↙ Exit fullscreen':'⛶ Fullscreen'}</button>
         <button className="capture-launch" aria-expanded={captureOpen} onClick={()=>setCaptureOpen(v=>!v)}>GIF studio</button>
         <WorkspaceViewer workspace={workspace} selected={selected} selectedPart={selectedPart} time={time} focus={focus} region={captureRegion} onSelect={(i,j)=>{setSelected(i);setSelectedPart(j);}}/>
-        <CaptureTools open={captureOpen} assets={assets} room={workspace.room} selected={selected} close={()=>setCaptureOpen(false)} onRegion={setCaptureRegion} addAsset={addAsset} workspace={workspace} time={time}/>
+        <CaptureTools open={captureOpen} assets={assets} room={workspace.room} selected={selected} close={()=>setCaptureOpen(false)} onRegion={setCaptureRegion} addAsset={addAsset} workspace={workspace} time={time} onFeedback={sendAnimationFeedback}/>
         <div className="hint">{time!==null?`ANIMATION ${time.toFixed(2)}s · `:''}Drag to orbit · Right-drag to pan · Scroll to zoom</div>
       </div>
       <aside className="inspector"><div className="eyebrow">INSPECTOR</div><ProjectInspector item={workspace.items[selected]} selectedPart={selectedPart} selectPart={index=>{setSelectedPart(index);setFocus(n=>n+1);}}/></aside>
