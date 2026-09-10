@@ -38,11 +38,13 @@ try {
   })) });
   await expect(page.locator('.asset')).toHaveCount(1);
   await page.getByLabel('Width', { exact: true }).fill('8');
+  await page.getByLabel('Preserved during GitHub login X position', { exact: true }).fill('2.5');
   await page.getByRole('button', { name: 'Sign in with GitHub' }).click();
   await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toBeVisible();
   await expect(page.locator('.account-name')).toHaveText('@astra-test');
   await expect(page.locator('.asset')).toHaveCount(1);
   await expect(page.getByLabel('Width', { exact: true })).toHaveValue('8');
+  await expect(page.getByLabel('Preserved during GitHub login X position', { exact: true })).toHaveValue('2.5');
   expect(verifierSeen).toBe(true);
   await mkdir('test-results', { recursive: true });
   await page.screenshot({ path: 'test-results/github-auth-desktop-after.png' });

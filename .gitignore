@@ -11,5 +11,3 @@ test-results/
 playwright-report/
 *.log
 __pycache__/
-.vercel
-.env*
